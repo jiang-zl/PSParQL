@@ -1,0 +1,23 @@
+# 设置CMake的最低版本
+cmake_minimum_required(VERSION 3.10)
+
+# 设置项目名称
+project(run_project)
+
+# 设置编译器
+set(CMAKE_CXX_COMPILER mpic++)
+
+# 添加编译选项
+add_compile_options(-std=c++11 -pthread -Wno-deprecated -O2)
+
+# 设置包含目录
+include_directories(${HADOOP_HOME}/include ${JAVA_HOME}/include ${JAVA_HOME}/include/linux ../system)
+
+# 设置链接目录
+link_directories(${HADOOP_HOME}/lib/native)
+
+# 添加可执行文件
+add_executable(run run.cpp)
+
+# 设置链接库
+target_link_libraries(run hdfs)

@@ -1,0 +1,31 @@
+#!/bin/bash
+
+if [[ $# -ge 1 ]]; then
+
+    originPath=$CLASSPATH
+
+    for i in $HADOOP_HOME/share/hadoop/common/lib/*.jar
+	do
+	CLASSPATH=$CLASSPATH:$i
+    done
+	for i in $HADOOP_HOME/share/hadoop/hdfs/lib/*.jar
+	do
+		CLASSPATH=$CLASSPATH:$i
+	done
+	for i in $HADOOP_HOME/share/hadoop/common/*.jar
+	do
+		CLASSPATH=$CLASSPATH:$i
+	done
+	for i in $HADOOP_HOME/share/hadoop/hdfs/*.jar
+	do
+		CLASSPATH=$CLASSPATH:$i
+	done
+	export CLASSPATH
+
+	eval $*
+
+	export CLASSPATH=$originPath
+
+else
+    echo 请在\[ $0 \]后面加上需要执行的命令
+fi
