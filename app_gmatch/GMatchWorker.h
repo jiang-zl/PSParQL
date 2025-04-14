@@ -454,12 +454,12 @@ public:
     }
     combine_tag_table[plan_order_list[0][0].id] = query_combine_tag;
   }
-  /**
-   * 检测查询组内查询图的公共子图部分
-   *
-   * @param query_graph_group   查询组
-   */
-  #ifndef ENABLE_SPARQL
+/**
+ * 检测查询组内查询图的公共子图部分
+ *
+ * @param query_graph_group   查询组
+ */
+#ifndef ENABLE_SPARQL
   virtual void detect_common_subgraph(hash_map<KeyT, QueryGroup *> &query_graph_group)
   {
     // cout << "进入detect_common_subgraph" <<endl;
@@ -691,7 +691,7 @@ public:
 
     comm_check_information(query_graph_group, comm_combine_tag_table, combine_tag_table, q, comm_query_plan_map);
   }
-  #endif
+#endif
 
   /**
    * 生成查询计划，确定查询顶点顺序
@@ -843,10 +843,24 @@ public:
           for (const auto &item : qpv.partner)
           {
             // 插入边的时候，按照 (小id,大id) 的规则插入，从而避免插入重复的边
+            pair<VertexID, VertexID> e{};
             if (v.id < item.id)
-              edge.insert(make_pair(v.id, item.id));
+              edge.insert(make_pair(v.id, item.id)), e = make_pair(v.id, item.id);
             else
-              edge.insert(make_pair(item.id, v.id));
+              edge.insert(make_pair(item.id, v.id)), e = make_pair(item.id, v.id);
+
+            for (const auto &adj_ : v.value.adj)
+            {
+              EdgeDirect reverse_d = (EdgeDirect::IN == adj_.d) ? EdgeDirect::OUT : EdgeDirect::IN;
+              if (item.id == adj_.id)
+              {
+                edge_label_table.insert(make_pair(e, adj_.el));
+                if (v.id < item.id)
+                  edge_direct_table.insert(make_pair(e, adj_.d));
+                else
+                  edge_direct_table.insert(make_pair(e, reverse_d));
+              }
+            }
           }
         }
 

@@ -443,68 +443,60 @@ public:
    * @param v2_candidate_list    v2 顶点的候选点列表
    */
   void check_edge(list<VertexT *> &v1_candidate_list, list<VertexT *> &v2_candidate_list,
-                  hash_map<VertexID, vector<AdjItem>> &adj_map)
+                  hash_map<VertexID, vector<AdjItem>> &adj_map, EdgeDirect d, EdgeLabel el)
   {
-    // 检查 v1
-    vector<AdjItem> v2_set;
-    for (const auto &v2 : v2_candidate_list)
+    for (list<VertexT *>::iterator it1 = v1_candidate_list.begin(); it1 != v1_candidate_list.end();)
     {
-      AdjItem adj;
-      adj.id = v2->id;
-      v2_set.push_back(adj);
-    }
-    sort(v2_set.begin(), v2_set.end(), adj_comp);
-
-    for (list<VertexT *>::iterator it = v1_candidate_list.begin(); it != v1_candidate_list.end(); /** 空 */)
-    {
-      // v1 的邻接表与 v2_candidate_list 作交集，如果为空，则从 v1_candidate_list 中删除 v1
-      // vector<AdjItem> &adj_vec = adj_map[(*it)->id];
-      vector<AdjItem> &adj_vec = (*it)->value.adj;
-      vector<vector<AdjItem> *> all_list;
-      all_list.push_back(&v2_set);
-      all_list.push_back(&adj_vec);
-
-      if (leapfrog_contains_common(all_list))
-      { // it 指向的顶点是 v1 的一个候选点，则继续检查下一个 v1 的候选点
-        it++;
+      bool isValid = false;
+      vector<AdjItem> &adj1_vec = (*it1)->value.adj;
+      for (list<VertexT *>::iterator it2 = v2_candidate_list.begin(); it2 != v2_candidate_list.end(); ++it2)
+      {
+        for (const AdjItem &adj1 : adj1_vec)
+        {
+          if (adj1.id == (*it2)->id && d == adj1.d && el == adj1.el)
+          {
+            isValid = true;
+            break;
+          }
+        }
+        if (isValid)
+          break;
       }
-      else
-      { // it 指向的顶点不是 v1 的一个候选点，则将其从 v1 的候选点列表删除
-        it = v1_candidate_list.erase(it);
+      if (!isValid)
+      {
+        it1 = v1_candidate_list.erase(it1);
         if (0 == v1_candidate_list.size())
           return;
       }
-    }
-
-    // 检查 v2
-    vector<AdjItem> v1_set;
-    for (const auto &v1 : v1_candidate_list)
-    {
-      AdjItem adj;
-      adj.id = v1->id;
-      v1_set.push_back(adj);
-    }
-    sort(v1_set.begin(), v1_set.end(), adj_comp);
-
-    for (list<VertexT *>::iterator it = v2_candidate_list.begin(); it != v2_candidate_list.end(); /** 空 */)
-    {
-      // v2 的邻接表与 v1_candidate_list 作交集，如果为空，则从 v2_candidate_list 中删除 v2
-      // vector<AdjItem> &adj_vec = adj_map[(*it)->id];
-      vector<AdjItem> &adj_vec = (*it)->value.adj;
-      vector<vector<AdjItem> *> all_list;
-      all_list.push_back(&v1_set);
-      all_list.push_back(&adj_vec);
-
-      if (leapfrog_contains_common(all_list))
-      { // it 指向的顶点是 v2 的一个候选点，则继续检查下一个 v2 的候选点
-        it++;
-      }
       else
-      { // it 指向的顶点不是 v2 的一个候选点，则将其从 v2 的候选点列表删除
-        it = v1_candidate_list.erase(it);
+        ++it1;
+    }
+
+    for (list<VertexT *>::iterator it2 = v2_candidate_list.begin(); it2 != v2_candidate_list.end();)
+    {
+      bool isValid = false;
+      vector<AdjItem> &adj2_vec = (*it2)->value.adj;
+      for (list<VertexT *>::iterator it1 = v1_candidate_list.begin(); it1 != v1_candidate_list.end(); ++it1)
+      {
+        for (const AdjItem &adj2 : adj2_vec)
+        {
+          if (adj2.id == (*it1)->id && d != adj2.d && el == adj2.el)
+          {
+            isValid = true;
+            break;
+          }
+        }
+        if (isValid)
+          break;
+      }
+      if (!isValid)
+      {
+        it2 = v2_candidate_list.erase(it2);
         if (0 == v2_candidate_list.size())
           return;
       }
+      else
+        ++it2;
     }
   }
 
@@ -687,7 +679,7 @@ public:
       // 结束任务
       return false;
     }
-    // cout << "DEBUG: 610" << endl;
+    // cout << "DEBUG: 690" << endl;
 
     vector<const QueryPlanVertexVecList *> matched_q;
     vector<const vector<query_judge> *> matched_combine_tag;
@@ -747,6 +739,9 @@ public:
       filter_vertex(frontier[i], current_level_vertex, adj_map, query_vertex_label, vet_map);
     }
 
+    hash_map<pair<VertexID, VertexID>, EdgeDirect, pair_hash> &edge_direct_table = *(hash_map<pair<VertexID, VertexID>, EdgeDirect, pair_hash> *)global_same_layer_edge_direct;
+    hash_map<pair<VertexID, VertexID>, EdgeLabel, pair_hash> &edge_label_table = *(hash_map<pair<VertexID, VertexID>, EdgeLabel, pair_hash> *)global_same_layer_edge_label;
+
     // 检查同层关系
     // 对每条边进行检查，去除不满足边关系的非法候选点，从而对 NLF 过滤后的顶点进行进一步过滤
     for (const auto &edges_item : matched_edges)
@@ -756,6 +751,12 @@ public:
       const VertexID &qg_id = edges_item.second;            // 边 e 所属的查询图 id
       hash_map<VertexID, list<VertexT *>>::iterator v1_it = vet_map.find(e.first);
       hash_map<VertexID, list<VertexT *>>::iterator v2_it = vet_map.find(e.second);
+
+      // if (edge_label_table.find(make_pair(e.first, e.second)) == edge_label_table.end())
+      //   cout << "不存在的边: first_id=" << e.first << ", second_id=" << e.second << endl;
+      EdgeLabel el = edge_label_table[make_pair(e.first, e.second)];
+      EdgeDirect d = edge_direct_table[make_pair(e.first, e.second)];
+
       if (v1_it == vet_map.end() || v2_it == vet_map.end())
       {
         // e.first 或 e.second 查询点的候选点列表为空，则说明此 task 不能匹配到这条边所属的查询图，在候选查询图集合中需要将该查询图删除
@@ -790,7 +791,7 @@ public:
         // 只有两端顶点的候选列表不为空时，才需要通过 check_edge 去删除一些非法的候选点
         if (v1_it->second.size() > 0 && v2_it->second.size() > 0)
         {
-          check_edge(v1_it->second, v2_it->second, adj_map);
+          check_edge(v1_it->second, v2_it->second, adj_map, d, el);
           // check_edge(v1_it->second, v2_it->second);
         }
         else
@@ -1049,11 +1050,11 @@ public:
         // }
         // cout<<endl;
         graph_matching3(query_graph, task_graph, GMatchQ, count, query_state);
-        // cout << "line: 965, 结束运行 graph_matching3" << endl;
+        // cout << "line: 1052, 结束运行 graph_matching3" << endl;
 
         // cout <<"无公共匹配结果，则直接回溯即可"<<endl;
         graph_matching_root(query_graph, task_graph, GMatchQ, count, query_state);
-        // cout << "line: 969, 结束运行 graph_matching_root" << endl;
+        // cout << "line: 1056, 结束运行 graph_matching_root" << endl;
 
         // cout<<"结束"<<endl;
       }
@@ -1065,7 +1066,7 @@ public:
         //  使用公共部分继续匹配
         // cout << "line: 979, 开始运行 graph_matching_comm_root" << endl;
         graph_matching_comm_root(query_graph, task_graph, comm_matchQ, GMatchQ, count, query_state);
-        // cout << "line: 981, 结束运行 graph_matching_comm_root" << endl;
+        // cout << "line: 1068, 结束运行 graph_matching_comm_root" << endl;
 
         // 强制从头开始匹配
         // graph_matching_root(query_graph,task_graph, GMatchQ, count,query_state);

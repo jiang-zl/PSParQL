@@ -127,6 +127,9 @@ public:
    */
   hash_map<Label, int> data_vertex_label_frequency;
 
+  hash_map<pair<VertexID, VertexID>, EdgeDirect, pair_hash> edge_direct_table;
+  hash_map<pair<VertexID, VertexID>, EdgeLabel, pair_hash> edge_label_table;
+
   /**
    * 远程顶点的缓存
    */
@@ -208,6 +211,9 @@ public:
     global_lsh_query_graph_group = new hash_map<KeyT, QueryGroup *>;            // 查询图分组，key：查询组 id，value：对应查询组
     global_lsh_query_graph_group_table = new hash_map<KeyT, QueryGroup *>;      // 查询图分组表，key：查询图 id，value：key 查询图对应的查询组
     global_query_plan_vertex_table = new hash_map<KeyT, QueryPlanVertex>;       // 查询计划点表
+
+    global_same_layer_edge_direct = &edge_direct_table;
+    global_same_layer_edge_label = &edge_label_table;
 
 #if PARTITION_TYPE == 1
     global_partition_table = new hash_map<KeyT, int>; // 分区表

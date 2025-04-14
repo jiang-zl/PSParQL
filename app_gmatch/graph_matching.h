@@ -1494,24 +1494,24 @@ size_t graph_matching3(const vector<QueryPlanVertex> &query_graph, GMatchSubgrap
         const auto &parent_adj = query_graph[Mindext + 1].parent;
         const auto &partner_adj = query_graph[Mindext + 1].partner;
         const auto &child_adj = query_graph[Mindext + 1].child;
-        cout << "------------------_my_rank=" << _my_rank << "-------------------------------------" << endl;
-        cout << "data_graph v.l=" << v->value.l << ", data_graph v.id=" << v->id << ", next query v.l=" << ue_l << ", next query v.id=" << query_graph[Mindext + 1].id << endl;
-        for (int j = 0; j < v_adj.size(); j++)
-        {
-          cout << "adj.l=" << v_adj[j].l << ", adj.d=" << v_adj[j].d << ", adj.el=" << v_adj[j].el << endl;
-        }
-        for (int k = 0; k < parent_adj.size(); ++k)
-        {
-          cout << "parent_adj.l=" << parent_adj[k].l << ", parent_adj.d=" << parent_adj[k].d << ", parent_adj.el=" << parent_adj[k].el << endl;
-        }
-        for (int k = 0; k < partner_adj.size(); ++k)
-        {
-          cout << "partner_adj.l=" << partner_adj[k].l << ", partner_adj.d=" << partner_adj[k].d << ", partner_adj.el=" << partner_adj[k].el << endl;
-        }
-        for (int k = 0; k < child_adj.size(); ++k)
-        {
-          cout << "child_adj.l=" << child_adj[k].l << ", child_adj.d=" << child_adj[k].d << ", child_adj.el=" << child_adj[k].el << endl;
-        }
+        // cout << "------------------_my_rank=" << _my_rank << "-------------------------------------" << endl;
+        // cout << "data_graph v.l=" << v->value.l << ", data_graph v.id=" << v->id << ", next query v.l=" << ue_l << ", next query v.id=" << query_graph[Mindext + 1].id << endl;
+        // for (int j = 0; j < v_adj.size(); j++)
+        // {
+        //   cout << "adj.l=" << v_adj[j].l << ", adj.d=" << v_adj[j].d << ", adj.el=" << v_adj[j].el << endl;
+        // }
+        // for (int k = 0; k < parent_adj.size(); ++k)
+        // {
+        //   cout << "parent_adj.l=" << parent_adj[k].l << ", parent_adj.d=" << parent_adj[k].d << ", parent_adj.el=" << parent_adj[k].el << endl;
+        // }
+        // for (int k = 0; k < partner_adj.size(); ++k)
+        // {
+        //   cout << "partner_adj.l=" << partner_adj[k].l << ", partner_adj.d=" << partner_adj[k].d << ", partner_adj.el=" << partner_adj[k].el << endl;
+        // }
+        // for (int k = 0; k < child_adj.size(); ++k)
+        // {
+        //   cout << "child_adj.l=" << child_adj[k].l << ", child_adj.d=" << child_adj[k].d << ", child_adj.el=" << child_adj[k].el << endl;
+        // }
 
         for (int j = 0; j < v_adj.size(); j++)
         {
@@ -1574,7 +1574,7 @@ size_t graph_matching3(const vector<QueryPlanVertex> &query_graph, GMatchSubgrap
             // count++;
           }
         }
-        cout << "-------------------------------------------------------" << endl;
+        // cout << "-------------------------------------------------------" << endl;
         GMatchQ.pop_back();
       }
       // cout << "end for" << endl;

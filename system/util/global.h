@@ -130,6 +130,9 @@ static clock_t polling_ticks; // = POLLING_TIME * CLOCKS_PER_SEC / 1000000;
 
 #define ENABLE_SPARQL_DEBUG 1
 
+void *global_same_layer_edge_direct;
+void *global_same_layer_edge_label;
+
 void *global_trimmer = NULL;
 void *global_taskmap_vec; // set by Worker using its compers, used by RespServer 当前 worker 中各个 Comper 的任务列表（对应 worker 中的 taskmap_vec，是其的全局化变量），若当前 worker 有 n 个线程，则有 n 个任务列表
 void *global_vcache;
