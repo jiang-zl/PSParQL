@@ -503,7 +503,7 @@ public:
   }
 #endif
 
-  const AdjItem* search_with_lower_bound(const vector<AdjItem> &adj_vec, VertexID id)
+  const AdjItem *search_with_lower_bound(const vector<AdjItem> &adj_vec, VertexID id)
   {
     int l = 0, r = (int)adj_vec.size();
     while (l < r)
