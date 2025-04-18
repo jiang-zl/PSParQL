@@ -252,7 +252,8 @@ typedef int Label; // 顶点标签类型，其本质须为数值类型（如 cha
 enum class EdgeDirect:char
 {
   IN,
-  OUT
+  OUT,
+  UNUSED
 };
 ostream& operator<<(ostream& out, const EdgeDirect &d)
 {

@@ -436,8 +436,10 @@ public:
     }
   }
 #endif
+
+#ifndef ENABLE_LEAPFORG_JOIN
   /**
-   * 检查同层节点之间的边关系（v1-v2），删除非法候选点
+   * 检查同层节点之间的边关系（v1-v2），删除非法候选点 (不使用leapfrog算法)
    *
    * @param v1_candidate_list    v1 顶点的候选点列表
    * @param v2_candidate_list    v2 顶点的候选点列表
@@ -488,6 +490,82 @@ public:
         }
         if (isValid)
           break;
+      }
+      if (!isValid)
+      {
+        it2 = v2_candidate_list.erase(it2);
+        if (0 == v2_candidate_list.size())
+          return;
+      }
+      else
+        ++it2;
+    }
+  }
+#endif
+
+  const AdjItem* search_with_lower_bound(const vector<AdjItem> &adj_vec, VertexID id)
+  {
+    int l = 0, r = (int)adj_vec.size();
+    while (l < r)
+    {
+      int mid = (r - l) / 2 + l;
+      if (adj_vec[mid].id >= id)
+        r = mid;
+      else
+        l = mid + 1;
+    }
+    return &adj_vec[l];
+  }
+
+  /**
+   * 检查同层节点之间的边关系（v1-v2），删除非法候选点 (使用leapfrog算法)
+   * 注意：d是v1-v2之间的方向，在计算v2-v1时，要用反方向d_
+   *
+   * @param v1_candidate_list    v1 顶点的候选点列表
+   * @param v2_candidate_list    v2 顶点的候选点列表
+   */
+  void check_edge(list<VertexT *> &v1_candidate_list, list<VertexT *> &v2_candidate_list,
+                  hash_map<VertexID, vector<AdjItem>> &adj_map, EdgeDirect d, EdgeLabel el)
+  {
+    for (list<VertexT *>::iterator it1 = v1_candidate_list.begin(); it1 != v1_candidate_list.end();)
+    {
+      bool isValid = false;
+      vector<AdjItem> &adj1_vec = (*it1)->value.adj;
+      sort(adj1_vec.begin(), adj1_vec.end(), adj_comp);
+
+      for (list<VertexT *>::iterator it2 = v2_candidate_list.begin(); it2 != v2_candidate_list.end(); ++it2)
+      {
+        const AdjItem *adj1 = search_with_lower_bound(adj1_vec, (*it2)->id);
+        if (adj1->id == (*it2)->id && d == adj1->d && el == adj1->el)
+        {
+          isValid = true;
+          break;
+        }
+      }
+      if (!isValid)
+      {
+        it1 = v1_candidate_list.erase(it1);
+        if (0 == v1_candidate_list.size())
+          return;
+      }
+      else
+        ++it1;
+    }
+
+    for (list<VertexT *>::iterator it2 = v2_candidate_list.begin(); it2 != v2_candidate_list.end();)
+    {
+      bool isValid = false;
+      vector<AdjItem> &adj2_vec = (*it2)->value.adj;
+      sort(adj2_vec.begin(), adj2_vec.end(), adj_comp);
+
+      for (list<VertexT *>::iterator it1 = v1_candidate_list.begin(); it1 != v1_candidate_list.end(); ++it1)
+      {
+        const AdjItem *adj2 = search_with_lower_bound(adj2_vec, (*it1)->id);
+        if (adj2->id == (*it1)->id && d != adj2->d && el == adj2->el)
+        {
+          isValid = true;
+          break;
+        }
       }
       if (!isValid)
       {
