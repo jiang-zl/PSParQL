@@ -105,7 +105,10 @@ public:
       for (const auto &qv : query_vertexs)
       {
         const VertexT &root = *(query_graph_table.find(qv)->second);
-        if (v->value.l == root.value.l && v->value.adj.size() >= root.value.adj.size()) // LDF 过滤
+        if (v->value.l == root.value.l &&
+            // v->value.adj.size() >= root.value.adj.size()
+            v->value.inAdjSize >= root.value.inAdjSize &&
+            v->value.outAdjSize >= root.value.outAdjSize) // LDF 过滤
         {
           if (nlf_filter(v, root)) // NLF 过滤
           {
@@ -254,13 +257,18 @@ public:
                      hash_map<VertexID, vector<AdjItem>> &adj_map, const hash_set<Label> &query_vertex_label,
                      hash_map<VertexID, list<VertexT *>> &vet_map)
   {
-    // 计算数据图、查询图中顶点的 NLF 信息
-    hash_map<Label, int> data_nlf;
+    hash_map<AdjEdge, int, AdjEdgeHash> data_nlf;
+
+    // // 计算数据图、查询图中顶点的 NLF 信息
+    // hash_map<Label, int> data_nlf;
     vector<AdjItem> &data_adj = data_vertex->value.adj;
     vector<AdjItem> trimed_data_adj; // 剪枝后的数据点邻接表
     for (int i = 0; i < data_adj.size(); ++i)
     {
-      data_nlf[data_adj[i].l]++; // 相应标签频率加 1
+      data_nlf[AdjEdge(data_adj[i])]++;
+
+      // data_nlf[data_adj[i].l]++; // 相应标签频率加 1
+
       if (query_vertex_label.find(data_adj[i].l) != query_vertex_label.end())
         trimed_data_adj.push_back(data_adj[i]);
     }
@@ -270,13 +278,20 @@ public:
     {
       QueryVertex &query_vertex = current_level_vertex[i];
       // 根据 LDF 进行过滤
-      if (data_vertex->value.l == query_vertex.value.l && data_vertex->value.adj.size() >= query_vertex.value.adj.size())
+      if (data_vertex->value.l == query_vertex.value.l &&
+          // data_vertex->value.adj.size() >= query_vertex.value.adj.size()
+          data_vertex->value.inAdjSize >= query_vertex.value.inAdjSize &&
+          data_vertex->value.outAdjSize >= query_vertex.value.outAdjSize)
       {
-        hash_map<Label, int> query_nlf;
+        hash_map<AdjEdge, int, AdjEdgeHash> query_nlf;
+
+        // hash_map<Label, int> query_nlf;
         vector<AdjItem> &query_adj = query_vertex.value.adj;
         for (int i = 0; i < query_adj.size(); ++i)
         {
-          query_nlf[query_adj[i].l]++; // 相应标签频率加 1
+          query_nlf[AdjEdge(query_adj[i])]++;
+
+          // query_nlf[query_adj[i].l]++; // 相应标签频率加 1
         }
 
         // 根据 NLF 进行过滤
@@ -285,7 +300,6 @@ public:
           if (adj_map.find(data_vertex->id) == adj_map.end())
             adj_map.insert(make_pair(data_vertex->id, trimed_data_adj));
 
-          //                    cout << "data id: " << data_vertex->id << ", query id: " << query_vertex.id << endl;
           it = vet_map.find(query_vertex.id);
           if (it == vet_map.end())
           {
@@ -1165,7 +1179,7 @@ public:
       // 聚合结果
       // cout << "DEBUG: 1000" << endl; // 在这里结束了
       GMatchAgg *agg = get_aggregator();
-      cout << "rank=" << _my_rank << ", count=" << count << endl;
+      // cout << "rank=" << _my_rank << ", count=" << count << endl;
       agg->aggregate(each_query_count);
 
       // 结束任务

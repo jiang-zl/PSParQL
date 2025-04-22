@@ -70,7 +70,10 @@ public:
       for (const auto &qv : query_vertexs)
       {
         VertexT &root = *(query_graph_table.find(qv)->second);
-        if (v->value.l == root.value.l && v->value.adj.size() >= root.value.adj.size()) // LDF 过滤
+        if (v->value.l == root.value.l &&
+            // v->value.adj.size() >= root.value.adj.size()
+            v->value.inAdjSize >= root.value.inAdjSize &&
+            v->value.outAdjSize >= root.value.outAdjSize) // LDF 过滤
         {
           if (nlf_filter(v, root)) // NLF 过滤
           {
@@ -402,7 +405,7 @@ public:
     // cout << "lastSize： " << lastSize << ":" <<"lastPsize: " << lastPsize <<endl;
     if (lastSize == 1 & lastPsize == 1)
     {
-      cout << "有最后的点" << endl;
+      // cout << "有最后的点" << endl;
       QueryPlanVertex childv = plan_order_list[plan_order_list.size() - 1][0]; // 最后一个点
       vector<AdjItem> parent = childv.parent;                                  // 最后一个点父节点
       VertexID parentID = parent[0].id;                                        // 最后一个点父节点id

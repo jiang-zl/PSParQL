@@ -169,6 +169,33 @@ void get_child_query_vertex(const QueryPlanVertex &qpv, hash_map<Label, bool> &c
   }
 }
 
+bool nlf(hash_map<AdjEdge, int, AdjEdgeHash> &data_nlf,
+         hash_map<AdjEdge, int, AdjEdgeHash> &query_nlf)
+{
+  if (data_nlf.size() >= query_nlf.size())
+  {
+    hash_map<AdjEdge, int, AdjEdgeHash>::iterator data_it;
+    // 遍历查询点的邻居，判断数据点的邻居频率是否满足条件
+    hash_map<AdjEdge, int, AdjEdgeHash>::iterator it = query_nlf.begin();
+    for (; it != query_nlf.end(); ++it)
+    {
+      data_it = data_nlf.find(it->first);
+      if (data_it == data_nlf.end() || data_it->second < it->second)
+      {
+        // 在数据点的邻居中未找到查询点相应标签的邻居，或者虽然找到，但是其频率小查询图中的频率
+        return false;
+      }
+    }
+  }
+  else
+  {
+    // 数据图中顶点的 NLF 大小比查询图中顶点 query_vertex 的 NLF 小，则该顶点不可能成为 query_vertex 的候选点
+    return false;
+  }
+
+  return true; // 数据点满足查询点的 NLF 条件，说明其能成为 query_vertex 的候选点
+}
+
 bool nlf(hash_map<Label, int> &data_vertex_nlf, hash_map<Label, int> &query_vertex_nlf)
 {
   if (data_vertex_nlf.size() >= query_vertex_nlf.size())
@@ -194,6 +221,7 @@ bool nlf(hash_map<Label, int> &data_vertex_nlf, hash_map<Label, int> &query_vert
   return true; // 数据点满足查询点的 NLF 条件，说明其能成为 query_vertex 的候选点
 }
 
+#ifndef ENABLE_SPARQL
 /**
  * 根据 NLF 对 data_vertex 进行过滤，判断其是否可能成为 query_vertex 的一个候选点。如果其能成为一个候选点，则返回 true；否则，返回 false。
  *
@@ -231,27 +259,41 @@ bool nlf_filter(GMatchVertex *data_vertex, QueryVertex &query_vertex,
 
   return flag;
 }
+#endif
 
 bool nlf_filter(GMatchVertex *data_vertex, const QueryVertex &query_vertex)
 {
-  // 计算数据图、查询图中顶点的 NLF 信息
-  hash_map<Label, int> data_nlf;
+  // // 计算数据图、查询图中 顶点与邻接点之间 边NLF 的信息
+  // hash_map<pair<EdgeDirect, EdgeLabel>, int, pair_hash> data_edge_nlf;
+  // hash_map<pair<EdgeDirect, EdgeLabel>, int, pair_hash> query_edge_nlf;
+
+  // // 计算数据图、查询图中顶点的 NLF 信息
+  // hash_map<Label, int> data_nlf;
+  hash_map<AdjEdge, int, AdjEdgeHash> data_nlf;
+
   vector<AdjItem> &data_adj = data_vertex->value.adj;
   for (int i = 0; i < data_adj.size(); ++i)
   {
-    data_nlf[data_adj[i].l]++; // 相应标签频率加 1
+    data_nlf[AdjEdge(data_adj[i])]++;
+    
+    // data_nlf[data_adj[i].l]++; // 相应标签频率加 1
   }
 
-  hash_map<Label, int> query_nlf;
+  // hash_map<Label, int> query_nlf;
+  hash_map<AdjEdge, int, AdjEdgeHash> query_nlf;
+
   const vector<AdjItem> &query_adj = query_vertex.value.adj;
   for (int i = 0; i < query_adj.size(); ++i)
   {
-    query_nlf[query_adj[i].l]++; // 相应标签频率加 1
+    query_nlf[AdjEdge(query_adj[i])]++;
+
+    // query_nlf[query_adj[i].l]++; // 相应标签频率加 1
   }
 
   return nlf(data_nlf, query_nlf);
 }
 
+#ifndef ENABLE_SPARQL
 bool nlf_filter2(GMatchVertex *data_vertex, vector<AdjItem> query_adj)
 {
   // 计算数据图、查询图中顶点的 NLF 信息
@@ -271,6 +313,7 @@ bool nlf_filter2(GMatchVertex *data_vertex, vector<AdjItem> query_adj)
 
   return nlf(data_nlf, query_nlf);
 }
+#endif
 
 //--------------------------------------------------------------------------------------------------------------
 // 根据父节点的邻居表找到该查询点(存在重复标签 leapfrog_join)
@@ -915,7 +958,7 @@ void ComputeLC(const vector<QueryPlanVertex> &query_graph, GMatchSubgraph &task_
 void ComputeLC_join(const vector<QueryPlanVertex> &query_graph, GMatchSubgraph &task_graph, int &Mindext,
                     vector<VertexID> &GMatchQ, const vector<query_judge> &query_state, vector<VertexID> &intersection_result)
 {
-  cout << "每个查询点的候选点" << endl;
+  // cout << "每个查询点的候选点" << endl;
   // 查询点信息
   const QueryPlanVertex &u = query_graph[Mindext]; // 查询点
   const VertexID &u_id = u.id;                     // 取得查询点的id
@@ -1322,7 +1365,7 @@ size_t graph_matching_comm(const vector<QueryPlanVertex> &query_graph, GMatchSub
                            vector<vector<VertexID>> &comm_matchQ, vector<VertexID> &GMatchQ, size_t &count,
                            const vector<query_judge> &query_state)
 {
-  cout << "进入 graph_matching_comm: DEBUG!!!" << endl;
+  // cout << "进入 graph_matching_comm: DEBUG!!!" << endl;
   int Mindext = GMatchQ.size();
   if (Mindext == query_graph.size())
   { // 进入到最后一个点的时候
@@ -1369,7 +1412,7 @@ size_t graph_matching_comm(const vector<QueryPlanVertex> &query_graph, GMatchSub
         vector<AdjItem> &v_adj = v->value.adj;
         for (int j = 0; j < v_adj.size(); j++)
         {
-          cout << "graph_matching_comm: DEBUG!!!" << endl;
+          // cout << "graph_matching_comm: DEBUG!!!" << endl;
           if (v_adj[j].l == ue_l)
           {
             bool isValid = false;
@@ -1611,10 +1654,11 @@ size_t graph_matching_root(const vector<QueryPlanVertex> &query_graph, GMatchSub
   return 0;
 }
 
+#ifndef ENABLE_SPARQL
 void comm_matching_root(GMatchSubgraph &task_graph, GMatchSubgraph &comm_subgraph, vector<vector<VertexID>> &comm_matchQ,
                         vector<VertexID> &MatchQ, vector<vector<VertexID *>> &matchQList, vector<query_judge> &comm_tag)
 {
-  cout << "进入comm_matching_root" << endl;
+  // cout << "进入comm_matching_root" << endl;
   vector<GMatchVertex> &root = task_graph.roots;          // 能够匹配的根节点
   vector<QueryVertex> &comm_ver = comm_subgraph.vertexes; // 公共结构中的点
   for (int i = 0; i < root.size(); i++)
@@ -1641,6 +1685,7 @@ void comm_matching_root(GMatchSubgraph &task_graph, GMatchSubgraph &comm_subgrap
     MatchQ.pop_back();
   }
 }
+#endif
 
 size_t graph_matching_comm_root(const vector<QueryPlanVertex> &query_graph, GMatchSubgraph &task_graph,
                                 vector<vector<VertexID>> &comm_matchQ, vector<VertexID> &GMatchQ, size_t &count,
