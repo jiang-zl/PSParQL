@@ -336,14 +336,14 @@ public:
     hdfsDisconnect(fs);
   }
 
-  /**
-   * 检测查询组内查询图的公共子图部分
-   *
-   * @param query_graph_group   查询组
-   */
-  #ifndef ENABLE_SPARQL
+/**
+ * 检测查询组内查询图的公共子图部分
+ *
+ * @param query_graph_group   查询组
+ */
+#ifndef ENABLE_SPARQL
   virtual void detect_common_subgraph(hash_map<KeyT, QueryGroup *> &query_graph_group) = 0;
-  #endif
+#endif
 
   /**
    * 生成查询计划
@@ -381,6 +381,8 @@ public:
     temp.el = inEL;
     temp.d = EdgeDirect::IN;
     nbs.push_back(temp);
+
+    inV->value.inAdjSize++;
   }
 
   void updateVertex(char *line, hash_map<VertexID, VertexT *> &recorder)
@@ -413,6 +415,8 @@ public:
       temp.el = atoi(pch);      // 边-标签为 int 类型
       temp.d = EdgeDirect::OUT; // 每一行的邻接点，都是出边终点：temp.id是v的出边终点
       nbs.push_back(temp);
+
+      v->value.outAdjSize++;
 
       // 对应每一个邻接点，当前节点又是它的入边终点：v是temp.id的入边终点
       updateInEdgeVertex(recorder, temp.id, temp.l, temp.el, v);
@@ -1268,7 +1272,7 @@ public:
     // cout << "调试查询图读入、广播" << endl;
     // for (const auto &v : query_vertexes[0])
     // {
-    //   cout << "v.id=" << v->id << ", v.l=" << v->value.l << ": in_adj={";
+    //   cout << "v.id=" << v->id << ", v.l=" << v->value.l << ", v.adj.inAdjSize=" << v->value.inAdjSize << ", v.adj.outAdjSize=" << v->value.outAdjSize << ": in_adj={";
     //   const vector<AdjItem> &adj = v->value.adj;
     //   for (const auto &temp : adj)
     //   {
@@ -1312,7 +1316,6 @@ public:
     //>> by this time, ReqQueue occupies about 0.3% CPU
 
     ResetTimer(WORKER_TIMER); // 开始计时
-                              // call status_sync() periodically
     //  遍历查询图列表，逐个生成查询计划
     hash_map<KeyT, EdgeVector> &edge = *(hash_map<KeyT, EdgeVector> *)global_same_layer_edge;
     hash_map<Label, vector<QueryGroup *>> &label_query_graph_group = *(hash_map<Label, vector<QueryGroup *>> *)global_label_query_graph_group; // 查询图分组，key：查询组的标签，value：对应标签的查询组，用于加速任务的生成
@@ -1334,7 +1337,7 @@ public:
       generateQueryPlan(query_graph_table, query_vertexes[i], order_list,
                         plan_order_list, plan_list, *(hash_map<KeyT, QueryPlanVertex> *)global_query_plan_vertex_table,
                         query_vertex_tag_list, query_last, edge_vec); // 生成查询计划
-      
+
       KeyT query_graph_id = plan_order_list[0][0].id; // 将查询计划的根顶点作为查询图的唯一标记
       order_list_table.insert(make_pair(query_graph_id, order_list));
       plan_order_list_table.insert(make_pair(query_graph_id, plan_order_list));
@@ -1433,7 +1436,7 @@ public:
     Profiler *profiler = new Profiler;
     if (_my_rank == MASTER_RANK)
     {
-      cout << "running" << endl;
+      // cout << "running" << endl;
     }
 
     while (global_end_label == false)

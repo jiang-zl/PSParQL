@@ -100,7 +100,7 @@ public:
   virtual void finishFinal_udf(FinalT &collector) = 0;
   virtual void finishFinal(FinalT &collector)
   {
-    cout << "finishFinal" << endl;
+    // cout << "finishFinal" << endl;
     lock.rdlock();
     finishFinal_udf(collector);
     lock.unlock();

@@ -211,7 +211,7 @@ void init_worker(int *argc, char ***argv)
   int namelen;
   char pro_name[MPI_MAX_PROCESSOR_NAME];
   MPI_Get_processor_name(pro_name, &namelen);
-  printf("Hello world! Processor %d of %d on %s\n", _my_rank, _num_workers, pro_name);
+  // printf("Hello world! Processor %d of %d on %s\n", _my_rank, _num_workers, pro_name);
 
   POLLING_TIME = SLEEP_PARAM * _num_workers;
   polling_ticks = POLLING_TIME * CLOCKS_PER_SEC / 1000000;

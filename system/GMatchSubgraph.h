@@ -23,6 +23,40 @@ struct AdjItem
   }
 };
 
+struct AdjEdge
+{
+  Label l;
+  EdgeDirect d;
+  EdgeLabel el;
+
+  AdjEdge(Label _l, EdgeDirect _d, EdgeLabel _el) : l(_l), d(_d), el(_el) { }
+
+  AdjEdge(const AdjItem &adj) : l(adj.l), d(adj.d), el(adj.el) { }
+
+  bool operator==(const AdjEdge &rhs) const
+  {
+    bool check1 = (l == rhs.l);
+    bool check2 = (d == rhs.d);
+    bool check3 = (el == rhs.el);
+
+    return (check1 && check2 && check3);
+  }
+};
+
+struct AdjEdgeHash
+{
+  std::size_t operator()(const AdjEdge &adj) const 
+  {
+    std::hash<Label> h1;
+    std::hash<EdgeDirect> h2;
+    std::hash<EdgeLabel> h3;
+    size_t seed = h1(adj.l);
+    seed ^= h2(adj.d) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    seed ^= h3(adj.el) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    return seed;
+  }
+};
+
 struct AdjItemHash
 {
   std::size_t operator()(const AdjItem &pAdjItem) const
@@ -44,6 +78,10 @@ struct GMatchValue
   Label l;
   vector<AdjItem> adj;            // 邻接表
   vector<VertexID> matched_query; // 可能匹配到的查询点
+
+  int inAdjSize;
+  int outAdjSize;
+  GMatchValue() : l(0), inAdjSize(0), outAdjSize(0) { }
 };
 
 typedef Vertex<VertexID, GMatchValue> GMatchVertex;
@@ -105,6 +143,8 @@ obinstream &operator>>(obinstream &m, GMatchValue &Val)
   m >> Val.l;
   m >> Val.adj;
   m >> Val.matched_query;
+  m >> Val.inAdjSize;
+  m >> Val.outAdjSize;
   return m;
 }
 
@@ -113,6 +153,8 @@ ibinstream &operator<<(ibinstream &m, const GMatchValue &Val)
   m << Val.l;
   m << Val.adj;
   m << Val.matched_query;
+  m << Val.inAdjSize;
+  m << Val.outAdjSize;
   return m;
 }
 
@@ -121,6 +163,8 @@ ofbinstream &operator>>(ofbinstream &m, GMatchValue &Val)
   m >> Val.l;
   m >> Val.adj;
   m >> Val.matched_query;
+  m >> Val.inAdjSize;
+  m >> Val.outAdjSize;
   return m;
 }
 
@@ -129,6 +173,8 @@ ifbinstream &operator<<(ifbinstream &m, const GMatchValue &Val)
   m << Val.l;
   m << Val.adj;
   m << Val.matched_query;
+  m << Val.inAdjSize;
+  m << Val.outAdjSize;
   return m;
 }
 

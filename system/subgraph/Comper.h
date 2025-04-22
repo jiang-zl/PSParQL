@@ -338,18 +338,18 @@ public:
     {
       if (task_spawn_called)
       {
-        cout << "task_spawn_called" << endl;
+        // cout << "task_spawn_called" << endl;
         return true;
       }
       else if (push_called)
       {
-        cout << "push_called" << endl;
+        // cout << "push_called" << endl;
         return true;
       }
       else
       {
-        char output_str[50]; // 假设足够容纳输出内容及终止符，根据实际情况调整大小
-        sprintf(output_str, "no task\n");
+        // char output_str[50]; // 假设足够容纳输出内容及终止符，根据实际情况调整大小
+        // sprintf(output_str, "no task\n");
         // printf("%s", output_str);
         // cout<<"no task"<<endl;
         return false;
@@ -402,7 +402,7 @@ public:
 
     while (task->pull_all(counter, map_task)) // may call add2map(.) task 拉取顶点，如果该任务需要的顶点已经全部拉取到本地，则返回 true，可以继续下一轮迭代；否则，拉取远程顶点，返回 false
     {
-      cout << "task->pull_all(counter, map_task) " << endl;
+      // cout << "task->pull_all(counter, map_task) " << endl;
       size_t prev_size = q_delay_task.size();
       try
       {
@@ -533,7 +533,7 @@ public:
     TaskT *task = map_task.get(); // 实际从 task_buf 中取出任务
     if (task == NULL)
       return false; // no task to fetch from q_task
-    cout << "push_task_from_taskmap" << endl;
+    // cout << "push_task_from_taskmap" << endl;
     task->set_pulled(); // reset task's frontier_vertexes (to replace NULL entries)
     size_t prev_size = q_delay_task.size();
     bool go = compute(task);              // set new "to_pull" 执行该任务的计算

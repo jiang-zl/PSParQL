@@ -142,7 +142,7 @@ public:
       }
       else
       {
-        cout << "agg_sync_false" << endl;
+        // cout << "agg_sync_false" << endl;
         // 所有 worker 都处于工作状态，则进行同步
         agg_sync(false);
         usleep(AGG_SYNC_TIME_GAP); // polling frequency 聚合一次后，空闲一段时间，再进行下一次聚合
@@ -158,7 +158,7 @@ public:
   ~AggSync()
   {
     main_thread.join();
-    cout << "agg_sync_true" << endl;
+    // cout << "agg_sync_true" << endl;
     agg_sync(true); // to make sure results of all tasks are aggregated 在销毁聚合器时再进行最后一次聚合，确保所有结果都已经聚合在一起
   }
 };
