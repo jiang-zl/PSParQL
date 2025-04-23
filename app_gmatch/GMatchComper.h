@@ -83,14 +83,18 @@ public:
     const hash_map<VertexID, QueryPlanVertex> &query_plan_vertex_table = *(hash_map<VertexID, QueryPlanVertex> *)global_query_plan_vertex_table;     // 查询计划点表
     const hash_map<Label, vector<QueryGroup *>> &label_query_graph_group = *(hash_map<Label, vector<QueryGroup *>> *)global_label_query_graph_group; // 查询图分组，key：查询组的标签，value：对应标签的查询组，用于加速任务的生成
 
+    const vector<QueryGroup *> *query_group_vec = nullptr;
     if (label_query_graph_group.find(v->value.l) == label_query_graph_group.end())
     {
-      return;
+      // return;
+      query_group_vec = &label_query_graph_group.begin()->second;
     }
-
+    else
+      query_group_vec = &label_query_graph_group.find(v->value.l)->second;
     // 遍历 v 标签对应的查询组中的所有查询图
-    const vector<QueryGroup *> &query_group_vec = label_query_graph_group.find(v->value.l)->second;
-    for (const QueryGroup *group : query_group_vec)
+    // const vector<QueryGroup *> &query_group_vec = label_query_graph_group.find(v->value.l)->second;
+    // for (const QueryGroup *group : query_group_vec)
+    for (const QueryGroup *group : *query_group_vec)
     {
       const vector<VertexID> &query_vertexs = group->query_vertexs;
       // 判断当前组查询图的标签是否符合条件
@@ -105,7 +109,7 @@ public:
       for (const auto &qv : query_vertexs)
       {
         const VertexT &root = *(query_graph_table.find(qv)->second);
-        if (v->value.l == root.value.l &&
+        if ((v->value.l == root.value.l || root.value.l < 0) &&
             // v->value.adj.size() >= root.value.adj.size()
             v->value.inAdjSize >= root.value.inAdjSize &&
             v->value.outAdjSize >= root.value.outAdjSize) // LDF 过滤
@@ -147,10 +151,11 @@ public:
       {
         // 判断当前顶点是否需要拉取
         hash_map<Label, bool>::iterator child_query_vertex_it = child_query_vertex.find(adj_v.l);
-        if (child_query_vertex_it != child_query_vertex.end())
-        {
-          next_level_data_vertex.push_back(adj_v.id);
-        }
+        // if (child_query_vertex_it != child_query_vertex.end())
+        // {
+        //   next_level_data_vertex.push_back(adj_v.id);
+        // }
+        next_level_data_vertex.push_back(adj_v.id);
       }
       // 根据该 task 拉取的顶点生成相应的签名信息，从而获取 bucket
       vector<VertexID> sig = minhash.signature(next_level_data_vertex);
@@ -220,7 +225,7 @@ public:
             addEdge_safe(t->subG, v->id, adj_v.id, adj_v.d, adj_v.el);
             for (const auto &opqv : only_parent_query_vertex)
             {
-              if (opqv->value.l == adj_v.l)
+              if (opqv->value.l == adj_v.l || opqv->value.l < 0)
                 candidate_vertexs[opqv->id].insert(adj_v.id);
             }
           }
@@ -228,6 +233,25 @@ public:
           { // 如果含有兄弟节点或子节点，则需要拉取
             t->pull(adj_v.id);
           }
+        }
+        else
+        {
+          // 如果只有父节点，则不需要拉取，直接加入到任务子图中
+          if (!t->subG.hasVertex(adj_v.id))
+          {
+            vector<VertexID> vec;
+            addNode(t->subG, adj_v.id, adj_v.l, vec);
+          }
+          // 添加边
+          addEdge_safe(t->subG, v->id, adj_v.id, adj_v.d, adj_v.el);
+          for (const auto &opqv : only_parent_query_vertex)
+          {
+            if (opqv->value.l == adj_v.l || opqv->value.l < 0)
+              candidate_vertexs[opqv->id].insert(adj_v.id);
+          }
+
+          // 如果含有兄弟节点或子节点，则需要拉取
+          t->pull(adj_v.id);
         }
       }
 #if ENABLE_QUERY_GRAPH_COMBINE == 0
@@ -262,15 +286,15 @@ public:
     // // 计算数据图、查询图中顶点的 NLF 信息
     // hash_map<Label, int> data_nlf;
     vector<AdjItem> &data_adj = data_vertex->value.adj;
-    vector<AdjItem> trimed_data_adj; // 剪枝后的数据点邻接表
+    // vector<AdjItem> trimed_data_adj; // 剪枝后的数据点邻接表
     for (int i = 0; i < data_adj.size(); ++i)
     {
       data_nlf[AdjEdge(data_adj[i])]++;
 
       // data_nlf[data_adj[i].l]++; // 相应标签频率加 1
 
-      if (query_vertex_label.find(data_adj[i].l) != query_vertex_label.end())
-        trimed_data_adj.push_back(data_adj[i]);
+      // if (query_vertex_label.find(data_adj[i].l) != query_vertex_label.end())
+      //   trimed_data_adj.push_back(data_adj[i]);
     }
 
     hash_map<VertexID, list<VertexT *>>::iterator it;
@@ -278,7 +302,7 @@ public:
     {
       QueryVertex &query_vertex = current_level_vertex[i];
       // 根据 LDF 进行过滤
-      if (data_vertex->value.l == query_vertex.value.l &&
+      if ((data_vertex->value.l == query_vertex.value.l || query_vertex.value.l < 0) &&
           // data_vertex->value.adj.size() >= query_vertex.value.adj.size()
           data_vertex->value.inAdjSize >= query_vertex.value.inAdjSize &&
           data_vertex->value.outAdjSize >= query_vertex.value.outAdjSize)
@@ -289,7 +313,8 @@ public:
         vector<AdjItem> &query_adj = query_vertex.value.adj;
         for (int i = 0; i < query_adj.size(); ++i)
         {
-          query_nlf[AdjEdge(query_adj[i])]++;
+          if (query_adj[i].l >= 0)
+            query_nlf[AdjEdge(query_adj[i])]++;
 
           // query_nlf[query_adj[i].l]++; // 相应标签频率加 1
         }
@@ -298,7 +323,7 @@ public:
         if (nlf(data_nlf, query_nlf))
         {
           if (adj_map.find(data_vertex->id) == adj_map.end())
-            adj_map.insert(make_pair(data_vertex->id, trimed_data_adj));
+            adj_map.insert(make_pair(data_vertex->id, data_adj));
 
           it = vet_map.find(query_vertex.id);
           if (it == vet_map.end())
@@ -1036,7 +1061,7 @@ public:
 
             for (const auto &opqv : only_parent_query_vertex)
             {
-              if (opqv->value.l == adj_v.l)
+              if (opqv->value.l == adj_v.l || opqv->value.l < 0)
                 candidate_vertexs[opqv->id].insert(adj_v.id);
             }
           }
@@ -1044,6 +1069,26 @@ public:
           { // 如果含有兄弟节点或子节点，则需要拉取
             pull_vertex.insert(adj_v.id);
           }
+        }
+        else
+        {
+          // 如果只有父节点，则不需要拉取，直接加入到任务子图中
+          if (!task_graph.hasVertex(adj_v.id))
+          {
+            vector<VertexID> vec;
+            addNode(task_graph, adj_v.id, adj_v.l, vec);
+          }
+          // 添加边
+          addEdge_safe(task_graph, item.first->id, adj_v.id, adj_v.d, adj_v.el);
+
+          for (const auto &opqv : only_parent_query_vertex)
+          {
+            if (opqv->value.l == adj_v.l || opqv->value.l < 0)
+              candidate_vertexs[opqv->id].insert(adj_v.id);
+          }
+
+          // 如果含有兄弟节点或子节点，则需要拉取
+          pull_vertex.insert(adj_v.id);
         }
       }
     }
@@ -1106,6 +1151,7 @@ public:
       //     cout << endl;
       // }
 #endif
+      // cout << "DEBUG: 1110" << endl;
       VertexID query_graph_id = task_graph.query_vertexs[0];                                  // 获得查询图的 id
       const QueryGroup *group_ptr = lsh_query_graph_group_table.find(query_graph_id)->second; // 查询组
       const GMatchSubgraph &comm_subgraph = group_ptr->comm_subgraph;                         // 公共子图

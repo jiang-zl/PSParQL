@@ -96,10 +96,11 @@ public:
     {
       for (auto &count1 : result)
       {
-        cout << "the number of matching results for query" << count1.first
-             << " is " << count1.second << endl;
+        // cout << "the number of matching results for query" << count1.first
+        //      << " is " << count1.second << endl;
+        cout << "the number of matching results for query is: " << count1.second << endl;
       }
-      cout << "count1:" << result.size() << endl;
+      // cout << "count1:" << result.size() << endl;
     }
   }
 };

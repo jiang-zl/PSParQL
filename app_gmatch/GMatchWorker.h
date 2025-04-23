@@ -48,14 +48,18 @@ public:
     const hash_map<VertexID, QueryPlanVertex> &query_plan_vertex_table = *(hash_map<VertexID, QueryPlanVertex> *)global_query_plan_vertex_table;     // 查询计划点表
     const hash_map<Label, vector<QueryGroup *>> &label_query_graph_group = *(hash_map<Label, vector<QueryGroup *>> *)global_label_query_graph_group; // 查询图分组，key：查询组的标签，value：对应标签的查询组，用于加速任务的生成
 
+    const vector<QueryGroup *> *query_group_vec = nullptr;
     if (label_query_graph_group.find(v->value.l) == label_query_graph_group.end())
     {
-      return;
+      // return;
+      query_group_vec = &label_query_graph_group.begin()->second;
     }
-
+    else
+      query_group_vec = &label_query_graph_group.find(v->value.l)->second;
     // 遍历 v 标签对应的查询组中的所有查询图
-    const vector<QueryGroup *> &query_group_vec = label_query_graph_group.find(v->value.l)->second;
-    for (const QueryGroup *group : query_group_vec)
+    // const vector<QueryGroup *> &query_group_vec = label_query_graph_group.find(v->value.l)->second;
+    // for (const QueryGroup *group : query_group_vec)
+    for (const QueryGroup *group : *query_group_vec)
     {
       const vector<VertexID> &query_vertexs = group->query_vertexs;
       // 判断当前组查询图的标签是否符合条件
@@ -70,7 +74,7 @@ public:
       for (const auto &qv : query_vertexs)
       {
         VertexT &root = *(query_graph_table.find(qv)->second);
-        if (v->value.l == root.value.l &&
+        if ((v->value.l == root.value.l || root.value.l < 0) &&
             // v->value.adj.size() >= root.value.adj.size()
             v->value.inAdjSize >= root.value.inAdjSize &&
             v->value.outAdjSize >= root.value.outAdjSize) // LDF 过滤
@@ -137,7 +141,7 @@ public:
 
             for (const auto &opqv : only_parent_query_vertex)
             {
-              if (opqv->value.l == adj_v.l)
+              if (opqv->value.l == adj_v.l || opqv->value.l < 0)
                 candidate_vertexs[opqv->id].insert(adj_v.id);
             }
           }
@@ -145,6 +149,26 @@ public:
           { // 如果含有兄弟节点或子节点，则需要拉取
             t.pull(adj_v.id);
           }
+        }
+        else
+        {
+          // 如果只有父节点，则不需要拉取，直接加入到任务子图中
+          if (!t.subG.hasVertex(adj_v.id))
+          {
+            vector<VertexID> vec;
+            addNode(t.subG, adj_v.id, adj_v.l, vec);
+          }
+          // 添加边
+          addEdge_safe(t.subG, v->id, adj_v.id, adj_v.d, adj_v.el);
+
+          for (const auto &opqv : only_parent_query_vertex)
+          {
+            if (opqv->value.l == adj_v.l || opqv->value.l < 0)
+              candidate_vertexs[opqv->id].insert(adj_v.id);
+          }
+
+          // 如果含有兄弟节点或子节点，则需要拉取
+          t.pull(adj_v.id);
         }
       }
       tcollector.push_back(t);

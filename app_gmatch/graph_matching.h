@@ -275,7 +275,7 @@ bool nlf_filter(GMatchVertex *data_vertex, const QueryVertex &query_vertex)
   for (int i = 0; i < data_adj.size(); ++i)
   {
     data_nlf[AdjEdge(data_adj[i])]++;
-    
+
     // data_nlf[data_adj[i].l]++; // 相应标签频率加 1
   }
 
@@ -285,7 +285,8 @@ bool nlf_filter(GMatchVertex *data_vertex, const QueryVertex &query_vertex)
   const vector<AdjItem> &query_adj = query_vertex.value.adj;
   for (int i = 0; i < query_adj.size(); ++i)
   {
-    query_nlf[AdjEdge(query_adj[i])]++;
+    if (query_adj[i].l >= 0)
+      query_nlf[AdjEdge(query_adj[i])]++;
 
     // query_nlf[query_adj[i].l]++; // 相应标签频率加 1
   }
@@ -356,12 +357,12 @@ void ComputeCandvre(GMatchSubgraph &task_graph, const vector<int> &relabel_index
   vector<AdjItem> &v_adj = v->value.adj;
   for (int j = 0; j < v_adj.size(); ++j)
   {
-    if (v_adj[j].l == u_l)
+    if (v_adj[j].l == u_l || u_l < 0)
     {
       bool isValid = false;
       for (int k = 0; k < parent_adj.size(); ++k)
       {
-        if (parent_adj[k].l == v->value.l)
+        if (parent_adj[k].l == v->value.l || parent_adj[k].l < 0)
         {
           if (v_adj[j].d != parent_adj[k].d && v_adj[j].el == parent_adj[k].el)
           {
@@ -374,7 +375,7 @@ void ComputeCandvre(GMatchSubgraph &task_graph, const vector<int> &relabel_index
       {
         for (int k = 0; k < partner_adj.size(); ++k)
         {
-          if (partner_adj[k].l == v->value.l)
+          if (partner_adj[k].l == v->value.l || partner_adj[k].l < 0)
           {
             if (v_adj[j].d != partner_adj[k].d && v_adj[j].el == partner_adj[k].el)
             {
@@ -388,7 +389,7 @@ void ComputeCandvre(GMatchSubgraph &task_graph, const vector<int> &relabel_index
       {
         for (int k = 0; k < child_adj.size(); ++k)
         {
-          if (child_adj[k].l == v->value.l)
+          if (child_adj[k].l == v->value.l || child_adj[k].l < 0)
           {
             if (v_adj[j].d != child_adj[k].d && v_adj[j].el == child_adj[k].el)
             {
@@ -457,12 +458,12 @@ void ComputeCandvre(GMatchSubgraph &task_graph, const vector<int> &relabel_index
   vector<AdjItem> &v_adj = v->value.adj;
   for (int j = 0; j < v_adj.size(); ++j)
   {
-    if (v_adj[j].l == u_l)
+    if (v_adj[j].l == u_l || u_l < 0)
     {
       bool isValid = false;
       for (int k = 0; k < parent_adj.size(); ++k)
       {
-        if (parent_adj[k].l == v->value.l)
+        if (parent_adj[k].l == v->value.l || parent_adj[k].l < 0)
         {
           if (v_adj[j].d != parent_adj[k].d && v_adj[j].el == parent_adj[k].el)
           {
@@ -475,7 +476,7 @@ void ComputeCandvre(GMatchSubgraph &task_graph, const vector<int> &relabel_index
       {
         for (int k = 0; k < partner_adj.size(); ++k)
         {
-          if (partner_adj[k].l == v->value.l)
+          if (partner_adj[k].l == v->value.l || partner_adj[k].l < 0)
           {
             if (v_adj[j].d != partner_adj[k].d && v_adj[j].el == partner_adj[k].el)
             {
@@ -489,7 +490,7 @@ void ComputeCandvre(GMatchSubgraph &task_graph, const vector<int> &relabel_index
       {
         for (int k = 0; k < child_adj.size(); ++k)
         {
-          if (child_adj[k].l == v->value.l)
+          if (child_adj[k].l == v->value.l || child_adj[k].l < 0)
           {
             if (v_adj[j].d != child_adj[k].d && v_adj[j].el == child_adj[k].el)
             {
@@ -531,12 +532,12 @@ void ComputeCandvre(GMatchSubgraph &task_graph, const vector<int> &relabel_index
   vector<AdjItem> &v_adj = v->value.adj;
   for (int j = 0; j < v_adj.size(); ++j)
   {
-    if (v_adj[j].l == u_l)
+    if (v_adj[j].l == u_l || u_l < 0)
     {
       bool isValid = false;
       for (int k = 0; k < parent_adj.size(); ++k)
       {
-        if (parent_adj[k].l == v->value.l)
+        if (parent_adj[k].l == v->value.l || parent_adj[k].l < 0)
         {
           if (v_adj[j].d != parent_adj[k].d && v_adj[j].el == parent_adj[k].el)
           {
@@ -549,7 +550,7 @@ void ComputeCandvre(GMatchSubgraph &task_graph, const vector<int> &relabel_index
       {
         for (int k = 0; k < partner_adj.size(); ++k)
         {
-          if (partner_adj[k].l == v->value.l)
+          if (partner_adj[k].l == v->value.l || partner_adj[k].l < 0)
           {
             if (v_adj[j].d != partner_adj[k].d && v_adj[j].el == partner_adj[k].el)
             {
@@ -563,7 +564,7 @@ void ComputeCandvre(GMatchSubgraph &task_graph, const vector<int> &relabel_index
       {
         for (int k = 0; k < child_adj.size(); ++k)
         {
-          if (child_adj[k].l == v->value.l)
+          if (child_adj[k].l == v->value.l || child_adj[k].l < 0)
           {
             if (v_adj[j].d != child_adj[k].d && v_adj[j].el == child_adj[k].el)
             {
@@ -649,12 +650,12 @@ void ComputeCandv(GMatchSubgraph &task_graph, vector<VertexID> &GMatchQ,
   vector<AdjItem> &v_adj = v->value.adj;
   for (int j = 0; j < v_adj.size(); ++j)
   {
-    if (v_adj[j].l == u_l)
+    if (v_adj[j].l == u_l || u_l < 0)
     {
       bool isValid = false;
       for (int k = 0; k < parent_adj.size(); ++k)
       {
-        if (parent_adj[k].l == v->value.l)
+        if (parent_adj[k].l == v->value.l || parent_adj[k].l < 0)
         {
           if (v_adj[j].d != parent_adj[k].d && v_adj[j].el == parent_adj[k].el)
           {
@@ -667,7 +668,7 @@ void ComputeCandv(GMatchSubgraph &task_graph, vector<VertexID> &GMatchQ,
       {
         for (int k = 0; k < partner_adj.size(); ++k)
         {
-          if (partner_adj[k].l == v->value.l)
+          if (partner_adj[k].l == v->value.l || partner_adj[k].l < 0)
           {
             if (v_adj[j].d != partner_adj[k].d && v_adj[j].el == partner_adj[k].el)
             {
@@ -681,7 +682,7 @@ void ComputeCandv(GMatchSubgraph &task_graph, vector<VertexID> &GMatchQ,
       {
         for (int k = 0; k < child_adj.size(); ++k)
         {
-          if (child_adj[k].l == v->value.l)
+          if (child_adj[k].l == v->value.l || child_adj[k].l < 0)
           {
             if (v_adj[j].d != child_adj[k].d && v_adj[j].el == child_adj[k].el)
             {
@@ -726,12 +727,12 @@ void ComputeCandv(GMatchSubgraph &task_graph, vector<VertexID> &GMatchQ,
   vector<AdjItem> &v_adj = v->value.adj;
   for (int j = 0; j < v_adj.size(); ++j)
   {
-    if (v_adj[j].l == u_l)
+    if (v_adj[j].l == u_l || u_l < 0)
     {
       bool isValid = false;
       for (int k = 0; k < parent_adj.size(); ++k)
       {
-        if (parent_adj[k].l == v->value.l)
+        if (parent_adj[k].l == v->value.l || parent_adj[k].l < 0)
         {
           if (v_adj[j].d != parent_adj[k].d && v_adj[j].el == parent_adj[k].el)
           {
@@ -744,7 +745,7 @@ void ComputeCandv(GMatchSubgraph &task_graph, vector<VertexID> &GMatchQ,
       {
         for (int k = 0; k < partner_adj.size(); ++k)
         {
-          if (partner_adj[k].l == v->value.l)
+          if (partner_adj[k].l == v->value.l || partner_adj[k].l < 0)
           {
             if (v_adj[j].d != partner_adj[k].d && v_adj[j].el == partner_adj[k].el)
             {
@@ -758,7 +759,7 @@ void ComputeCandv(GMatchSubgraph &task_graph, vector<VertexID> &GMatchQ,
       {
         for (int k = 0; k < child_adj.size(); ++k)
         {
-          if (child_adj[k].l == v->value.l)
+          if (child_adj[k].l == v->value.l || child_adj[k].l < 0)
           {
             if (v_adj[j].d != child_adj[k].d && v_adj[j].el == child_adj[k].el)
             {
@@ -803,12 +804,12 @@ void ComputeCandv(GMatchSubgraph &task_graph, vector<VertexID> &GMatchQ,
   vector<AdjItem> &v_adj = v->value.adj;
   for (int j = 0; j < v_adj.size(); ++j)
   {
-    if (v_adj[j].l == u_l)
+    if (v_adj[j].l == u_l || u_l < 0)
     {
       bool isValid = false;
       for (int k = 0; k < parent_adj.size(); ++k)
       {
-        if (parent_adj[k].l == v->value.l)
+        if (parent_adj[k].l == v->value.l || parent_adj[k].l < 0)
         {
           if (v_adj[j].d != parent_adj[k].d && v_adj[j].el == parent_adj[k].el)
           {
@@ -821,7 +822,7 @@ void ComputeCandv(GMatchSubgraph &task_graph, vector<VertexID> &GMatchQ,
       {
         for (int k = 0; k < partner_adj.size(); ++k)
         {
-          if (partner_adj[k].l == v->value.l)
+          if (partner_adj[k].l == v->value.l || partner_adj[k].l < 0)
           {
             if (v_adj[j].d != partner_adj[k].d && v_adj[j].el == partner_adj[k].el)
             {
@@ -835,7 +836,7 @@ void ComputeCandv(GMatchSubgraph &task_graph, vector<VertexID> &GMatchQ,
       {
         for (int k = 0; k < child_adj.size(); ++k)
         {
-          if (child_adj[k].l == v->value.l)
+          if (child_adj[k].l == v->value.l || child_adj[k].l < 0)
           {
             if (v_adj[j].d != child_adj[k].d && v_adj[j].el == child_adj[k].el)
             {
@@ -1369,7 +1370,7 @@ size_t graph_matching_comm(const vector<QueryPlanVertex> &query_graph, GMatchSub
   int Mindext = GMatchQ.size();
   if (Mindext == query_graph.size())
   { // 进入到最后一个点的时候
-    // print_vec(GMatchQ);
+    print_vec(GMatchQ);
     count++;
   }
   else
@@ -1390,14 +1391,14 @@ size_t graph_matching_comm(const vector<QueryPlanVertex> &query_graph, GMatchSub
       ;
     else if (Mindext == query_graph.size() - 1)
     {
-      // for(VertexID id : vcandidate)
-      // {
-      //     GMatchQ.push_back(id);
-      //     // print_vec(GMatchQ);
-      //     count++;
-      //     GMatchQ.pop_back();
-      // }
-      count = count + vcandidate.size();
+      for (VertexID id : vcandidate)
+      {
+        GMatchQ.push_back(id);
+        print_vec(GMatchQ);
+        count++;
+        GMatchQ.pop_back();
+      }
+      // count = count + vcandidate.size();
     }
     else if (query_state[Mindext].tag_last)
     {
@@ -1413,12 +1414,12 @@ size_t graph_matching_comm(const vector<QueryPlanVertex> &query_graph, GMatchSub
         for (int j = 0; j < v_adj.size(); j++)
         {
           // cout << "graph_matching_comm: DEBUG!!!" << endl;
-          if (v_adj[j].l == ue_l)
+          if (v_adj[j].l == ue_l || ue_l < 0)
           {
             bool isValid = false;
             for (int k = 0; k < parent_adj.size(); ++k)
             {
-              if (parent_adj[k].l == v->value.l)
+              if (parent_adj[k].l == v->value.l || parent_adj[k].l < 0)
               {
                 if (v_adj[j].d != parent_adj[k].d && v_adj[j].el == parent_adj[k].el)
                 {
@@ -1431,7 +1432,7 @@ size_t graph_matching_comm(const vector<QueryPlanVertex> &query_graph, GMatchSub
             {
               for (int k = 0; k < partner_adj.size(); ++k)
               {
-                if (partner_adj[k].l == v->value.l)
+                if (partner_adj[k].l == v->value.l || partner_adj[k].l < 0)
                 {
                   if (v_adj[j].d != partner_adj[k].d && v_adj[j].el == partner_adj[k].el)
                   {
@@ -1445,7 +1446,7 @@ size_t graph_matching_comm(const vector<QueryPlanVertex> &query_graph, GMatchSub
             {
               for (int k = 0; k < child_adj.size(); ++k)
               {
-                if (child_adj[k].l == v->value.l)
+                if (child_adj[k].l == v->value.l || child_adj[k].l < 0)
                 {
                   if (v_adj[j].d != child_adj[k].d && v_adj[j].el == child_adj[k].el)
                   {
@@ -1456,13 +1457,13 @@ size_t graph_matching_comm(const vector<QueryPlanVertex> &query_graph, GMatchSub
               }
             }
 
-            // GMatchQ.push_back(v_adj[j].id);
-            // print_vec(GMatchQ);
             if (isValid)
             {
+              GMatchQ.push_back(v_adj[j].id);
+              print_vec(GMatchQ);
               count++;
+              GMatchQ.pop_back();
             }
-            // GMatchQ.pop_back();
           }
         }
         GMatchQ.pop_back();
@@ -1492,7 +1493,13 @@ size_t graph_matching3(const vector<QueryPlanVertex> &query_graph, GMatchSubgrap
   { // 进入到最后一个点的时候
     // cout << "进入到最后一个点" << endl;
     ++count;
-    // print_vec(GMatchQ);
+
+    cout << "----------------------数据图----------------------" << endl;
+    print_vec(GMatchQ);
+    cout << "----------------------查询图----------------------" << endl;
+    for (const auto &v : query_graph)
+      cout << v.id << " ";
+    cout << endl;
   }
   else
   {
@@ -1513,19 +1520,24 @@ size_t graph_matching3(const vector<QueryPlanVertex> &query_graph, GMatchSubgrap
     //  cout <<"结果1"<<endl;
     if (vcandidate.size() == 0)
       ;
-
     else if (Mindext == query_graph.size() - 1)
     { // 如果查询点是最后的点候选点
       for (VertexID id : vcandidate)
       {
         GMatchQ.push_back(id);
-        // print_vec(GMatchQ);
+
+        cout << "----------------------数据图----------------------" << endl;
+        print_vec(GMatchQ);
+        cout << "----------------------查询图----------------------" << endl;
+        for (const auto &v : query_graph)
+          cout << v.id << " ";
+        cout << endl;
+
         count++;
         GMatchQ.pop_back();
       }
       // count = count + vcandidate.size();
     }
-
     else if (query_state[Mindext].tag_last)
     { // 如果最后点可以特殊处理
       for (VertexID id : vcandidate)
@@ -1558,13 +1570,13 @@ size_t graph_matching3(const vector<QueryPlanVertex> &query_graph, GMatchSubgrap
 
         for (int j = 0; j < v_adj.size(); j++)
         {
-          if (v_adj[j].l == ue_l)
+          if (v_adj[j].l == ue_l || ue_l < 0)
           {
             bool isValid = false;
 
             for (int k = 0; k < parent_adj.size(); ++k)
             {
-              if (parent_adj[k].l == v->value.l)
+              if (parent_adj[k].l == v->value.l || parent_adj[k].l < 0)
               {
                 if (v_adj[j].d != parent_adj[k].d && v_adj[j].el == parent_adj[k].el)
                 {
@@ -1577,7 +1589,7 @@ size_t graph_matching3(const vector<QueryPlanVertex> &query_graph, GMatchSubgrap
             {
               for (int k = 0; k < partner_adj.size(); ++k)
               {
-                if (partner_adj[k].l == v->value.l)
+                if (partner_adj[k].l == v->value.l || partner_adj[k].l < 0)
                 {
                   if (v_adj[j].d != partner_adj[k].d && v_adj[j].el == partner_adj[k].el)
                   {
@@ -1591,7 +1603,7 @@ size_t graph_matching3(const vector<QueryPlanVertex> &query_graph, GMatchSubgrap
             {
               for (int k = 0; k < child_adj.size(); ++k)
               {
-                if (child_adj[k].l == v->value.l)
+                if (child_adj[k].l == v->value.l || child_adj[k].l < 0)
                 {
                   if (v_adj[j].d != child_adj[k].d && v_adj[j].el == child_adj[k].el)
                   {
@@ -1604,17 +1616,18 @@ size_t graph_matching3(const vector<QueryPlanVertex> &query_graph, GMatchSubgrap
 
             if (isValid)
             {
+              GMatchQ.push_back(v_adj[j].id);
+
+              cout << "----------------------数据图----------------------" << endl;
+              print_vec(GMatchQ);
+              cout << "----------------------查询图----------------------" << endl;
+              for (const auto &v : query_graph)
+                cout << v.id << " ";
+              cout << endl;
+
               count++;
+              GMatchQ.pop_back();
             }
-
-            // count++;
-
-            // GMatchQ.push_back(v_adj[j].id);
-            // print_vec(GMatchQ);
-            // count++;
-            // GMatchQ.pop_back();
-
-            // count++;
           }
         }
         // cout << "-------------------------------------------------------" << endl;
@@ -1688,10 +1701,10 @@ void comm_matching_root(GMatchSubgraph &task_graph, GMatchSubgraph &comm_subgrap
 #endif
 
 size_t graph_matching_comm_root(const vector<QueryPlanVertex> &query_graph, GMatchSubgraph &task_graph,
-                                vector<vector<VertexID>> &comm_matchQ, vector<VertexID> &GMatchQ, size_t &count,
-                                const vector<query_judge> &query_state)
+                                vector<vector<VertexID>> &comm_matchQ, vector<VertexID> &GMatchQ,
+                                size_t &count, const vector<query_judge> &query_state)
 {
-  cout << "进入graph_matching_comm_root" << endl;
+  // cout << "进入graph_matching_comm_root" << endl;
   int Mindext = GMatchQ.size();
   const vector<comm_notree> &notree_e = query_state[0].notree_e;
   if (notree_e.size() == 0)
