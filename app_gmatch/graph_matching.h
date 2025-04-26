@@ -169,6 +169,33 @@ void get_child_query_vertex(const QueryPlanVertex &qpv, hash_map<Label, bool> &c
   }
 }
 
+bool nlf(hash_map<NlfEdge, int, NlfEdgeHash> &data_nlf,
+         hash_map<NlfEdge, int, NlfEdgeHash> &query_nlf)
+{
+  if (data_nlf.size() >= query_nlf.size())
+  {
+    hash_map<NlfEdge, int, NlfEdgeHash>::iterator data_it;
+    // 遍历查询点的邻居，判断数据点的邻居频率是否满足条件
+    hash_map<NlfEdge, int, NlfEdgeHash>::iterator it = query_nlf.begin();
+    for (; it != query_nlf.end(); ++it)
+    {
+      data_it = data_nlf.find(it->first);
+      if (data_it == data_nlf.end() || data_it->second < it->second)
+      {
+        // 在数据点的邻居中未找到查询点相应标签的邻居，或者虽然找到，但是其频率小查询图中的频率
+        return false;
+      }
+    }
+  }
+  else
+  {
+    // 数据图中顶点的 NLF 大小比查询图中顶点 query_vertex 的 NLF 小，则该顶点不可能成为 query_vertex 的候选点
+    return false;
+  }
+
+  return true; // 数据点满足查询点的 NLF 条件，说明其能成为 query_vertex 的候选点
+}
+
 bool nlf(hash_map<AdjEdge, int, AdjEdgeHash> &data_nlf,
          hash_map<AdjEdge, int, AdjEdgeHash> &query_nlf)
 {
@@ -271,10 +298,14 @@ bool nlf_filter(GMatchVertex *data_vertex, const QueryVertex &query_vertex)
   // hash_map<Label, int> data_nlf;
   hash_map<AdjEdge, int, AdjEdgeHash> data_nlf;
 
+  hash_map<NlfEdge, int, NlfEdgeHash> data_edge_nlf;
+
   vector<AdjItem> &data_adj = data_vertex->value.adj;
   for (int i = 0; i < data_adj.size(); ++i)
   {
     data_nlf[AdjEdge(data_adj[i])]++;
+
+    data_edge_nlf[NlfEdge(data_adj[i])]++;
 
     // data_nlf[data_adj[i].l]++; // 相应标签频率加 1
   }
@@ -282,16 +313,19 @@ bool nlf_filter(GMatchVertex *data_vertex, const QueryVertex &query_vertex)
   // hash_map<Label, int> query_nlf;
   hash_map<AdjEdge, int, AdjEdgeHash> query_nlf;
 
+  hash_map<NlfEdge, int, NlfEdgeHash> query_edge_nlf;
+
   const vector<AdjItem> &query_adj = query_vertex.value.adj;
   for (int i = 0; i < query_adj.size(); ++i)
   {
-    if (query_adj[i].l >= 0)
+    if (query_adj[i].l > 0)
       query_nlf[AdjEdge(query_adj[i])]++;
 
+    query_edge_nlf[NlfEdge(query_adj[i])]++;
     // query_nlf[query_adj[i].l]++; // 相应标签频率加 1
   }
 
-  return nlf(data_nlf, query_nlf);
+  return nlf(data_nlf, query_nlf) && nlf(data_edge_nlf, query_edge_nlf);
 }
 
 #ifndef ENABLE_SPARQL

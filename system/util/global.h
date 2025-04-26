@@ -130,6 +130,8 @@ static clock_t polling_ticks; // = POLLING_TIME * CLOCKS_PER_SEC / 1000000;
 
 #define ENABLE_SPARQL_DEBUG 1
 
+#define ENABLE_Q2 1
+
 void *global_same_layer_edge_direct;
 void *global_same_layer_edge_label;
 

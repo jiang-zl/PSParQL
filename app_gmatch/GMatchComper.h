@@ -283,6 +283,8 @@ public:
   {
     hash_map<AdjEdge, int, AdjEdgeHash> data_nlf;
 
+    hash_map<NlfEdge, int, NlfEdgeHash> data_edge_nlf;
+
     // // 计算数据图、查询图中顶点的 NLF 信息
     // hash_map<Label, int> data_nlf;
     vector<AdjItem> &data_adj = data_vertex->value.adj;
@@ -290,6 +292,8 @@ public:
     for (int i = 0; i < data_adj.size(); ++i)
     {
       data_nlf[AdjEdge(data_adj[i])]++;
+
+      data_edge_nlf[NlfEdge(data_adj[i])]++;
 
       // data_nlf[data_adj[i].l]++; // 相应标签频率加 1
 
@@ -309,18 +313,21 @@ public:
       {
         hash_map<AdjEdge, int, AdjEdgeHash> query_nlf;
 
+        hash_map<NlfEdge, int, NlfEdgeHash> query_edge_nlf;
+
         // hash_map<Label, int> query_nlf;
         vector<AdjItem> &query_adj = query_vertex.value.adj;
         for (int i = 0; i < query_adj.size(); ++i)
         {
-          if (query_adj[i].l >= 0)
+          if (query_adj[i].l > 0)
             query_nlf[AdjEdge(query_adj[i])]++;
 
+          query_edge_nlf[NlfEdge(query_adj[i])]++;
           // query_nlf[query_adj[i].l]++; // 相应标签频率加 1
         }
 
         // 根据 NLF 进行过滤
-        if (nlf(data_nlf, query_nlf))
+        if (nlf(data_nlf, query_nlf) && nlf(data_edge_nlf, query_edge_nlf))
         {
           if (adj_map.find(data_vertex->id) == adj_map.end())
             adj_map.insert(make_pair(data_vertex->id, data_adj));

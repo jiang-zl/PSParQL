@@ -733,21 +733,7 @@ public:
     float best_cost = numeric_limits<float>::max();
     float cost = 0.0f;
 
-    // QueryVertex *root = query_graph_table[0]; // 根顶点
-    // for (const auto &v : vec)
-    // {
-    //   cost = 1.0f * data_vertex_label_frequency[v->value.l] / v->value.adj.size();
-    //   if (cost < best_cost)
-    //   {
-    //     best_cost = cost;
-    //     root = v;
-    //   }
-    // }
-    // cout << root->id << endl;
-
-    QueryVertex *root_from, *root_to; // 根顶点
-    // EdgeLabel to_el;
-    // EdgeDirect to_d;
+    QueryVertex *root_from = NULL, *root_to = NULL; // 根顶点
     for (const auto &v1 : vec)
     {
       float cost1 = 1.0f * data_vertex_label_frequency[v1->value.l] / v1->value.adj.size();
@@ -756,14 +742,56 @@ public:
       {
         VertexID v2_id = v2_adj.id;
         VertexT *v2 = query_graph_table[v2_id];
-        EdgeLabel el = v2_adj.el;
-
         float cost2 = 1.0f * data_vertex_label_frequency[v2->value.l] / v2->value.adj.size();
+
+#if ENABLE_Q2 == 1
+        if (NULL == root_from || NULL == root_to)
+        {
+          if (EdgeDirect::OUT == v2_adj.d)
+            root_from = v1, root_to = v2;
+          else
+            root_from = v2, root_to = v1;
+        }
+        if (v1->id > 0 && v2->id > 0)
+        {
+          cost = min(cost1, cost2);
+          if (best_cost > cost)
+          {
+            best_cost = cost;
+            if (cost1 < cost2)
+              root_from = v1, root_to = v2;
+            else
+              root_from = v2, root_to = v1;
+          }
+        }
+        else if (v1->id > 0)
+        {
+          cost = cost1;
+          if (best_cost > cost)
+          {
+            best_cost = cost;
+            root_from = v1, root_to = v2;
+          }
+        }
+        else if (v2->id > 0)
+        {
+          cost = cost2;
+          if (best_cost > cost)
+          {
+            best_cost = cost;
+            root_from = v2, root_to = v1;
+          }
+        }
+        else
+        {
+          // 不处理
+        }
+#else
         cost = cost1 * cost2;
         if (cost < best_cost)
         {
           best_cost = cost;
-          
+
           if (EdgeDirect::IN == v2_adj.d)
             root_from = v2, root_to = v1;
           else if (EdgeDirect::OUT == v2_adj.d)
@@ -771,10 +799,9 @@ public:
           else
             cout << "[ERROR]: 查询图存在一条边, 方向值是错误的 (方向只能是EdgeDirect::IN/OUT) , 这条边的端点: v1.id=" << v1->id << ", v2.id=" << v2->id << endl;
         }
+#endif
       }
     }
-
-    // cout << root_from->id << ", " << root_to->id << endl;
 
     vector<QueryVertex> first_level;  // 记录第一层的顶点，实际即记录根顶点
     int pop_num = 0;                  // 记录每层出队元素的个数

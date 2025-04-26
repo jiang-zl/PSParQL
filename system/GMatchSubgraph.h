@@ -57,6 +57,36 @@ struct AdjEdgeHash
   }
 };
 
+struct NlfEdge
+{
+  EdgeDirect d;
+  EdgeLabel el;
+
+  NlfEdge(EdgeDirect _d, EdgeLabel _el) : d(_d), el(_el) { }
+
+  NlfEdge(const AdjItem &adj) : d(adj.d), el(adj.el) { }
+
+  bool operator==(const NlfEdge &rhs) const
+  {
+    bool check2 = (d == rhs.d);
+    bool check3 = (el == rhs.el);
+
+    return (check2 && check3);
+  }
+};
+
+struct NlfEdgeHash
+{
+  std::size_t operator()(const NlfEdge &e) const 
+  {
+    std::hash<EdgeDirect> h2;
+    std::hash<EdgeLabel> h3;
+    size_t seed = h2(e.d);
+    seed ^= h3(e.el) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    return seed;
+  }
+};
+
 struct AdjItemHash
 {
   std::size_t operator()(const AdjItem &pAdjItem) const
