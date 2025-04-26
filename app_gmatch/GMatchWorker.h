@@ -763,8 +763,7 @@ public:
         if (cost < best_cost)
         {
           best_cost = cost;
-          // to_el = el;
-          // to_d = v2_adj.d;
+          
           if (EdgeDirect::IN == v2_adj.d)
             root_from = v2, root_to = v1;
           else if (EdgeDirect::OUT == v2_adj.d)

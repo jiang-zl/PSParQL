@@ -323,8 +323,8 @@ public:
       for (const auto &kv : recorder)
       {
         VertexT *v = kv.second;
-        if (trimmer)
-          trimmer->trim(*v);
+        // if (trimmer)
+        // trimmer->trim(*v);
         vector<AdjItem> &nbs = v->value.adj;
         sort(nbs.begin(), nbs.end(), adj_comp);
         vVec.push_back(v);

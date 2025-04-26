@@ -1494,12 +1494,12 @@ size_t graph_matching3(const vector<QueryPlanVertex> &query_graph, GMatchSubgrap
     // cout << "进入到最后一个点" << endl;
     ++count;
 
-    cout << "----------------------数据图----------------------" << endl;
-    print_vec(GMatchQ);
-    cout << "----------------------查询图----------------------" << endl;
-    for (const auto &v : query_graph)
-      cout << v.id << " ";
-    cout << endl;
+    // cout << "----------------------数据图----------------------" << endl;
+    // print_vec(GMatchQ);
+    // cout << "----------------------查询图----------------------" << endl;
+    // for (const auto &v : query_graph)
+    //   cout << v.id << " ";
+    // cout << endl;
   }
   else
   {
@@ -1526,12 +1526,12 @@ size_t graph_matching3(const vector<QueryPlanVertex> &query_graph, GMatchSubgrap
       {
         GMatchQ.push_back(id);
 
-        cout << "----------------------数据图----------------------" << endl;
-        print_vec(GMatchQ);
-        cout << "----------------------查询图----------------------" << endl;
-        for (const auto &v : query_graph)
-          cout << v.id << " ";
-        cout << endl;
+        // cout << "----------------------数据图----------------------" << endl;
+        // print_vec(GMatchQ);
+        // cout << "----------------------查询图----------------------" << endl;
+        // for (const auto &v : query_graph)
+        //   cout << v.id << " ";
+        // cout << endl;
 
         count++;
         GMatchQ.pop_back();
@@ -1618,12 +1618,12 @@ size_t graph_matching3(const vector<QueryPlanVertex> &query_graph, GMatchSubgrap
             {
               GMatchQ.push_back(v_adj[j].id);
 
-              cout << "----------------------数据图----------------------" << endl;
-              print_vec(GMatchQ);
-              cout << "----------------------查询图----------------------" << endl;
-              for (const auto &v : query_graph)
-                cout << v.id << " ";
-              cout << endl;
+              // cout << "----------------------数据图----------------------" << endl;
+              // print_vec(GMatchQ);
+              // cout << "----------------------查询图----------------------" << endl;
+              // for (const auto &v : query_graph)
+              //   cout << v.id << " ";
+              // cout << endl;
 
               count++;
               GMatchQ.pop_back();
