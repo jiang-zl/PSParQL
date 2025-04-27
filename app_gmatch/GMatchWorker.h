@@ -742,9 +742,11 @@ public:
       {
         VertexID v2_id = v2_adj.id;
         VertexT *v2 = query_graph_table[v2_id];
+        EdgeLabel el = v2_adj.el;
+
         float cost2 = 1.0f * data_vertex_label_frequency[v2->value.l] / v2->value.adj.size();
 
-#if ENABLE_Q2 == 1
+#if ENABLE_LUBM_Q2_Q4_Q5_Q6 == 1
         if (NULL == root_from || NULL == root_to)
         {
           if (EdgeDirect::OUT == v2_adj.d)
@@ -787,17 +789,14 @@ public:
           // 不处理
         }
 #else
-        cost = cost1 * cost2;
+        cost = 1.0f * data_edge_label_frequency[el];
         if (cost < best_cost)
         {
           best_cost = cost;
-
           if (EdgeDirect::IN == v2_adj.d)
-            root_from = v2, root_to = v1;
-          else if (EdgeDirect::OUT == v2_adj.d)
             root_from = v1, root_to = v2;
-          else
-            cout << "[ERROR]: 查询图存在一条边, 方向值是错误的 (方向只能是EdgeDirect::IN/OUT) , 这条边的端点: v1.id=" << v1->id << ", v2.id=" << v2->id << endl;
+          else if (EdgeDirect::OUT == v2_adj.d)
+            root_from = v2, root_to = v1;
         }
 #endif
       }
@@ -951,6 +950,14 @@ public:
     // 没有公共部分
 #if ENABLE_QUERY_GROUP_COMBINE == 0
     MatchingQueryPlan(plan_order_list, plan_list, combine_tag_table, query_last);
+#endif
+
+#ifndef RELEASE
+    for (const auto &pv : plan_list)
+    {
+      cout << pv.id << " ";
+    }
+    cout << endl;
 #endif
 
 #if ENABLE_DEBUG

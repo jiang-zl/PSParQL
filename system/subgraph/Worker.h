@@ -127,6 +127,11 @@ public:
    */
   hash_map<Label, int> data_vertex_label_frequency;
 
+  /**
+   * 数据图中各个边标签出现的频率
+   */
+  hash_map<Label, int> data_edge_label_frequency;
+
   hash_map<pair<VertexID, VertexID>, EdgeDirect, pair_hash> edge_direct_table;
   hash_map<pair<VertexID, VertexID>, EdgeLabel, pair_hash> edge_label_table;
 
@@ -313,7 +318,7 @@ public:
     {
       reader.readLine();
       if (!reader.eof())
-        updateVertex(reader.getLine(), recorder);
+        updateVertex(reader.getLine(), recorder, true);
       else
         break;
     }
@@ -385,7 +390,7 @@ public:
     inV->value.inAdjSize++;
   }
 
-  void updateVertex(char *line, hash_map<VertexID, VertexT *> &recorder)
+  void updateVertex(char *line, hash_map<VertexID, VertexT *> &recorder, bool isDataGraph = false)
   {
     char *pch;
     pch = strtok(line, " \t");
@@ -420,6 +425,11 @@ public:
 
       // 对应每一个邻接点，当前节点又是它的入边终点：v是temp.id的入边终点
       updateInEdgeVertex(recorder, temp.id, temp.l, temp.el, v);
+
+      if (isDataGraph)
+      {
+        data_edge_label_frequency[temp.el]++;
+      }
     }
   }
 
@@ -1037,9 +1047,11 @@ public:
             min_heap.push(min);
         }
       }
-      //------
+//------
+#ifndef RELEASE
       if (plans.size() > 0)
         cout << plans.size() << " stealing plans generated at the master" << endl; //@@@@@@
+#endif
       // calculating stealing tasks
       // a negative tag (-x-1) means receiving 根据正负号来区分是任务的窃取者还是被窃取者，负号是被窃取者，正号是窃取者
       vector<vector<int>> steal_lists(_num_workers); // steal_list[i] = stealing tasks 任务窃取列表
@@ -1256,6 +1268,16 @@ public:
     //  vertexes 是当前 worker 读取的顶点，因为读取到的顶点不一定是分区到当前 worker ，因此通过 sync_graph 操作将顶点进行分区并发送给相应的分区（即 worker）
     sync_graph(vertexes); // 作用，数据归位，将根据顶点 id 的哈希值进行分区，然后将顶点数据发给其真正应该所处的 worker
     broadcast_data(data_vertex_label_frequency);
+    broadcast_data(data_edge_label_frequency);
+
+    // for (const auto &v : query_vertexes[0])
+    // {
+    //   const vector<AdjItem> &adj = v->value.adj;
+    //   for (const auto &temp : adj)
+    //   {
+    //     printf("edge label: %d, count[%d] in data graph is: %d\n", temp.el, temp.el, data_edge_label_frequency[temp.el]);
+    //   }
+    // }
 
     // init global_vertex_pos
     global_vertex_pos = 0;

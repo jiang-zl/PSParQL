@@ -130,7 +130,10 @@ static clock_t polling_ticks; // = POLLING_TIME * CLOCKS_PER_SEC / 1000000;
 
 #define ENABLE_SPARQL_DEBUG 1
 
-#define ENABLE_Q2 1
+// 运行前，重点配置
+#define ENABLE_LUBM_Q2_Q4_Q5_Q6 0 // 1：查询Q2,Q4,Q5,Q6；0：查询Q1/Q7/Q3
+// 发布前，重点配置
+#define RELEASE 1
 
 void *global_same_layer_edge_direct;
 void *global_same_layer_edge_label;

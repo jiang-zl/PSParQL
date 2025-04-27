@@ -109,9 +109,11 @@ public:
         // 	cout<<"Worker "<<i<<": "<<task_num_vec[i]<<" tasks processed (+ "<<delta<<")"<<endl;
         // }
         prev[i] = task_num_vec[i];
-        //------
+//------
+#ifndef RELEASE
         if (stolen_vec[i] > 0)
           cout << "--- " << stolen_vec[i] << " more tasks stolen" << endl;
+#endif
       }
       // cout<<endl;
     }
