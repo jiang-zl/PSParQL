@@ -94,11 +94,12 @@ public:
   {
     if (_my_rank == MASTER_RANK)
     {
-      for (auto &count1 : result)
+      const auto &plans = *static_cast<const hash_map<VertexID, QueryPlanVertexVecList> *>(global_query_plan_vertex_order_list);
+      for (const auto &plan : plans)
       {
-        // cout << "the number of matching results for query" << count1.first
-        //      << " is " << count1.second << endl;
-        cout << "the number of matching results for query is: " << count1.second << endl;
+        auto it = result.find(plan.first);
+        cout << "the number of matching results for query is: "
+             << (it == result.end() ? 0 : it->second) << endl;
       }
       // cout << "count1:" << result.size() << endl;
     }

@@ -48,45 +48,19 @@ public:
     const hash_map<VertexID, QueryPlanVertex> &query_plan_vertex_table = *(hash_map<VertexID, QueryPlanVertex> *)global_query_plan_vertex_table;     // 查询计划点表
     const hash_map<Label, vector<QueryGroup *>> &label_query_graph_group = *(hash_map<Label, vector<QueryGroup *>> *)global_label_query_graph_group; // 查询图分组，key：查询组的标签，value：对应标签的查询组，用于加速任务的生成
 
-    const vector<QueryGroup *> *query_group_vec = nullptr;
-    if (label_query_graph_group.find(v->value.l) == label_query_graph_group.end())
+    for (const QueryGroup *group : seed_groups(label_query_graph_group, v->value.l))
     {
-      // return;
-      query_group_vec = &label_query_graph_group.begin()->second;
-    }
-    else
-      query_group_vec = &label_query_graph_group.find(v->value.l)->second;
-    // 遍历 v 标签对应的查询组中的所有查询图
-    // const vector<QueryGroup *> &query_group_vec = label_query_graph_group.find(v->value.l)->second;
-    // for (const QueryGroup *group : query_group_vec)
-    for (const QueryGroup *group : *query_group_vec)
-    {
-      const vector<VertexID> &query_vertexs = group->query_vertexs;
-      // 判断当前组查询图的标签是否符合条件
-      const VertexT *root = query_graph_table.find(query_vertexs[0])->second;
-      // if (v->value.l != root->value.l)
-      //     continue; // 数据点 v 与当前组查询图的标签不一致，则继续下一组
-
-      // 以分组为单位生成任务
+      const auto &query_vertexs = group->query_vertexs;
       hash_set<VertexID> query_graph_id_set; // 当前数据点 v 能够匹配到的查询图根顶点 id
       int max_step = 0;
       // 遍历查询组内所有的查询图，逐个判断是否可以生成 task
       for (const auto &qv : query_vertexs)
       {
         VertexT &root = *(query_graph_table.find(qv)->second);
-        if ((v->value.l == root.value.l || root.value.l < 0) &&
-            // v->value.adj.size() >= root.value.adj.size()
-            v->value.inAdjSize >= root.value.inAdjSize &&
-            v->value.outAdjSize >= root.value.outAdjSize) // LDF 过滤
+        if (nlf_filter(v, root))
         {
-          if (nlf_filter(v, root)) // NLF 过滤
-          {
-            query_graph_id_set.insert(root.id);
-            if (plan_order_map.find(root.id)->second.size() > max_step)
-            {
-              max_step = plan_order_map.find(root.id)->second.size();
-            }
-          }
+          query_graph_id_set.insert(root.id);
+          max_step = std::max(max_step, (int)plan_order_map.find(root.id)->second.size());
         }
       }
 
@@ -102,75 +76,12 @@ public:
       t.context = 1;
       t.group_id = group->group_id;
 
-      // 获取各个查询图根顶点的子查询点标签，从而便于拉取顶点
-      hash_map<Label, bool> child_query_vertex; // key：子查询点标签，value：标记子查询点是否需要拉取
-      vector<const GMatchVertex *> only_parent_query_vertex;
-      for (const auto &root_id : query_graph_id_set)
-      {
-        get_child_query_vertex(query_plan_vertex_table.find(root_id)->second, child_query_vertex,
-                               query_graph_table, query_plan_vertex_table, only_parent_query_vertex);
-      }
-
-      // 遍历邻接表，确定需要拉取的邻居点
-      vector<AdjItem> &nbs = v->value.adj;
-      // 拉取相应标签的顶点
-      hash_map<VertexID, set<VertexID>> &candidate_vertexs = t.subG.candidate_vertexs;
-      for (const auto &adj_v : nbs)
-      {
-        // 判断当前顶点是否需要拉取
-        hash_map<Label, bool>::iterator child_query_vertex_it = child_query_vertex.find(adj_v.l);
-        if (child_query_vertex_it != child_query_vertex.end())
-        {
-          // 判断当前顶点匹配到的查询点是否只有父节点
-          if (child_query_vertex_it->second)
-          { // 如果只有父节点，则不需要拉取，直接加入到任务子图中
-            if (!t.subG.hasVertex(adj_v.id))
-            {
-              vector<VertexID> vec;
-              // if (local_table.find(adj_v.id) == local_table.end())
-              //   addNode(t.subG, adj_v.id, adj_v.l, vec);
-              // else
-              // {
-              //   VertexT *pAdjV = local_table[adj_v.id];
-              //   addNode(t.subG, adj_v.id, adj_v.l, vec, pAdjV->value.adj);
-              // }
-              addNode(t.subG, adj_v.id, adj_v.l, vec);
-            }
-            // 添加边
-            addEdge_safe(t.subG, v->id, adj_v.id, adj_v.d, adj_v.el);
-
-            for (const auto &opqv : only_parent_query_vertex)
-            {
-              if (opqv->value.l == adj_v.l || opqv->value.l < 0)
-                candidate_vertexs[opqv->id].insert(adj_v.id);
-            }
-          }
-          else
-          { // 如果含有兄弟节点或子节点，则需要拉取
-            t.pull(adj_v.id);
-          }
-        }
-        else
-        {
-          // 如果只有父节点，则不需要拉取，直接加入到任务子图中
-          if (!t.subG.hasVertex(adj_v.id))
-          {
-            vector<VertexID> vec;
-            addNode(t.subG, adj_v.id, adj_v.l, vec);
-          }
-          // 添加边
-          addEdge_safe(t.subG, v->id, adj_v.id, adj_v.d, adj_v.el);
-
-          for (const auto &opqv : only_parent_query_vertex)
-          {
-            if (opqv->value.l == adj_v.l || opqv->value.l < 0)
-              candidate_vertexs[opqv->id].insert(adj_v.id);
-          }
-
-          // 如果含有兄弟节点或子节点，则需要拉取
-          t.pull(adj_v.id);
-        }
-      }
+      hash_set<VertexID> next;
+      for (VertexID root : query_graph_id_set)
+        expand_vertex(t.subG, *v, query_plan_vertex_table.find(root)->second,
+                      query_plan_vertex_table, next);
+      for (VertexID id : next)
+        t.pull(id);
       tcollector.push_back(t);
     }
   }
@@ -214,6 +125,7 @@ public:
       if (Id_map_index.find(v_parents[k].id) != Id_map_index.end())
       {
         query_x.parents_indext.push_back(Id_map_index[v_parents[k].id]);
+        query_x.bound_edges.push_back({Id_map_index[v_parents[k].id], reverse_direction(v_parents[k].d), v_parents[k].el});
         parent_indext.push_back(Id_map_index[v_parents[k].id]);
       }
     }
@@ -222,6 +134,7 @@ public:
       if (Id_map_index.find(v_partner[k].id) != Id_map_index.end())
       {
         query_x.parents_indext.push_back(Id_map_index[v_partner[k].id]);
+        query_x.bound_edges.push_back({Id_map_index[v_partner[k].id], reverse_direction(v_partner[k].d), v_partner[k].el});
         query_x.notree_indext.push_back(Id_map_index[v_partner[k].id]);
       }
     }
@@ -820,10 +733,12 @@ public:
     visisted.insert(root_from->id); // 给根顶点虚拟一条入边，形成AdjItem
     order_list.push_back(first_level);
 
-    q.push(root_to);
-    // visisted.insert({root_to->id, root_to->value.l, to_d, to_el});
-    visisted.insert(root_to->id);
-    next_level_vertex_num++; // root_to属于下一层的顶点
+    if (root_to != root_from)
+    {
+      q.push(root_to);
+      visisted.insert(root_to->id);
+      ++next_level_vertex_num;
+    }
 
     while (!q.empty())
     {
@@ -887,33 +802,19 @@ public:
           intersect_vertex(v.value.adj, order_list[i - 1], qpv.parent);
         }
 
-        // 确定中间的边关系
+        for (const auto &item : v.value.adj)
+          if (item.id == v.id && item.d == EdgeDirect::OUT)
+            qpv.self_edges.push_back(item.el);
+
         if (i != 0)
         {
           intersect_vertex(v.value.adj, order_list[i], qpv.partner);
-          // 加入边
-          for (const auto &item : qpv.partner)
-          {
-            // 插入边的时候，按照 (小id,大id) 的规则插入，从而避免插入重复的边
-            pair<VertexID, VertexID> e{};
-            if (v.id < item.id)
-              edge.insert(make_pair(v.id, item.id)), e = make_pair(v.id, item.id);
-            else
-              edge.insert(make_pair(item.id, v.id)), e = make_pair(item.id, v.id);
-
-            for (const auto &adj_ : v.value.adj)
-            {
-              EdgeDirect reverse_d = (EdgeDirect::IN == adj_.d) ? EdgeDirect::OUT : EdgeDirect::IN;
-              if (item.id == adj_.id)
-              {
-                edge_label_table.insert(make_pair(e, adj_.el));
-                if (v.id < item.id)
-                  edge_direct_table.insert(make_pair(e, adj_.d));
-                else
-                  edge_direct_table.insert(make_pair(e, reverse_d));
-              }
-            }
-          }
+          auto &partners = qpv.partner;
+          partners.erase(remove_if(partners.begin(), partners.end(), [&](const AdjItem &item) {
+            return item.id == v.id;
+          }), partners.end());
+          for (const auto &item : partners)
+            edge.insert(minmax(v.id, item.id));
         }
 
         // 确定子节点

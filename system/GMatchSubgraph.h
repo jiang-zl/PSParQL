@@ -130,6 +130,31 @@ inline bool adj_comp(const AdjItem &a, const AdjItem &b)
   return a.id < b.id;
 }
 
+// Stable order within an endpoint's range for parallel and reciprocal edges.
+inline bool edge_less(const AdjItem &a, const AdjItem &b)
+{
+  if (a.id != b.id) return a.id < b.id;
+  if (a.d != b.d) return a.d < b.d;
+  if (a.el != b.el) return a.el < b.el;
+  return a.l < b.l;
+}
+
+inline EdgeDirect reverse_direction(EdgeDirect d)
+{
+  return d == EdgeDirect::IN ? EdgeDirect::OUT : EdgeDirect::IN;
+}
+
+inline void finalize_adjacency(GMatchVertex &v)
+{
+  auto &adj = v.value.adj;
+  sort(adj.begin(), adj.end(), edge_less);
+  adj.erase(unique(adj.begin(), adj.end()), adj.end());
+  v.value.inAdjSize = count_if(adj.begin(), adj.end(), [](const AdjItem &e) {
+    return e.d == EdgeDirect::IN;
+  });
+  v.value.outAdjSize = adj.size() - v.value.inAdjSize;
+}
+
 // 以下函数是对 >> 、<< 运算符的重载，在序列化对象时使用
 obinstream &operator>>(obinstream &m, AdjItem &v)
 {

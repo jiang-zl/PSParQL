@@ -132,8 +132,6 @@ public:
    */
   hash_map<Label, int> data_edge_label_frequency;
 
-  hash_map<pair<VertexID, VertexID>, EdgeDirect, pair_hash> edge_direct_table;
-  hash_map<pair<VertexID, VertexID>, EdgeLabel, pair_hash> edge_label_table;
 
   /**
    * 远程顶点的缓存
@@ -217,8 +215,6 @@ public:
     global_lsh_query_graph_group_table = new hash_map<KeyT, QueryGroup *>;      // 查询图分组表，key：查询图 id，value：key 查询图对应的查询组
     global_query_plan_vertex_table = new hash_map<KeyT, QueryPlanVertex>;       // 查询计划点表
 
-    global_same_layer_edge_direct = &edge_direct_table;
-    global_same_layer_edge_label = &edge_label_table;
 
 #if PARTITION_TYPE == 1
     global_partition_table = new hash_map<KeyT, int>; // 分区表
@@ -330,8 +326,7 @@ public:
         VertexT *v = kv.second;
         // if (trimmer)
         // trimmer->trim(*v);
-        vector<AdjItem> &nbs = v->value.adj;
-        sort(nbs.begin(), nbs.end(), adj_comp);
+        finalize_adjacency(*v);
         vVec.push_back(v);
         data_vertex_label_frequency[v->value.l]++; // 相应数据点标签频率加 1
       }
@@ -393,9 +388,9 @@ public:
   void updateVertex(char *line, hash_map<VertexID, VertexT *> &recorder, bool isDataGraph = false)
   {
     char *pch;
-    pch = strtok(line, " \t");
+    pch = strtok(line, " \t\r");
     int id = atoi(pch);
-    pch = strtok(NULL, " \t");
+    pch = strtok(NULL, " \t\r");
     int vl = atoi(pch);
 
     VertexT *v = nullptr;
@@ -411,12 +406,12 @@ public:
 
     vector<AdjItem> &nbs = v->value.adj;
     AdjItem temp;
-    while ((pch = strtok(NULL, " ")) != NULL)
+    while ((pch = strtok(NULL, " \t\r")) != NULL)
     {
       temp.id = atoi(pch);
-      pch = strtok(NULL, " ");
+      pch = strtok(NULL, " \t\r");
       temp.l = atoi(pch); // 点-标签为 int 类型
-      pch = strtok(NULL, " ");
+      pch = strtok(NULL, " \t\r");
       temp.el = atoi(pch);      // 边-标签为 int 类型
       temp.d = EdgeDirect::OUT; // 每一行的邻接点，都是出边终点：temp.id是v的出边终点
       nbs.push_back(temp);
@@ -458,8 +453,7 @@ public:
           for (const auto &kv : recorder)
           {
             VertexT *v = kv.second;
-            vector<AdjItem> &nbs = v->value.adj;
-            sort(nbs.begin(), nbs.end(), adj_comp);
+            finalize_adjacency(*v);
             gVec[count].push_back(v);
           }
           recorder.clear();
@@ -484,8 +478,7 @@ public:
       for (const auto &kv : recorder)
       {
         VertexT *v = kv.second;
-        vector<AdjItem> &nbs = v->value.adj;
-        sort(nbs.begin(), nbs.end(), adj_comp);
+        finalize_adjacency(*v);
         gVec[count].push_back(v);
       }
       count++;
@@ -1354,7 +1347,7 @@ public:
       vector<int> query_vertex_tag_list;
       vector<query_judge> query_combine_tag;
       EdgeVector edge_vec; // 同层边
-      bool query_last;
+      bool query_last = false;
 
       generateQueryPlan(query_graph_table, query_vertexes[i], order_list,
                         plan_order_list, plan_list, *(hash_map<KeyT, QueryPlanVertex> *)global_query_plan_vertex_table,
