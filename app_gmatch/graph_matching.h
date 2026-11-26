@@ -81,56 +81,19 @@ void addEdge(GMatchSubgraph &g, VertexID id1, VertexID id2)
 /**
  * 相比 addEdge，本函数会在 add 之前检查插入的边是否已经存在，如果已经存在则不会重复插入边，即避免插入相同的边
  */
-// 方向是V_id1到V_id2的方向
-void addEdge_safe(GMatchSubgraph &g, VertexID id1, VertexID id2, EdgeDirect d, EdgeLabel el) // avoid redundancy
+static void insert_edge(vector<AdjItem> &adj, const AdjItem &edge)
 {
-  GMatchVertex *v1, *v2;
-  v1 = g.getVertex(id1);
-  v2 = g.getVertex(id2);
-  AdjItem adj1;
-  adj1.id = v1->id;
-  adj1.l = v1->value.l;
-  // 设置边的方向和权重
-  if (EdgeDirect::IN == d)
-    adj1.d = EdgeDirect::OUT;
-  else
-    adj1.d = EdgeDirect::IN;
-  adj1.el = el;
+  auto pos = lower_bound(adj.begin(), adj.end(), edge, edge_less);
+  if (pos == adj.end() || !(*pos == edge))
+    adj.insert(pos, edge);
+}
 
-  AdjItem adj2;
-  adj2.id = v2->id;
-  adj2.l = v2->value.l;
-  // 设置边的方向和权重
-  adj2.d = d;
-  adj2.el = el;
-
-  bool flag_add = false; // 标记是否添加边
-  vector<AdjItem> &adj1_list = v1->value.adj;
-  vector<AdjItem> &adj2_list = v2->value.adj;
-
-  vector<AdjItem>::iterator pos1 = lower_bound(adj1_list.begin(), adj1_list.end(), adj2, adj_comp);
-  if (pos1 != adj1_list.end())
-  {
-    if (pos1->id != id2) // 在邻接表中没有找到相应顶点，则添加边
-      flag_add = true;
-  }
-  else
-    flag_add = true;
-
-  if (flag_add)
-  {
-    vector<AdjItem>::iterator pos2 = lower_bound(adj2_list.begin(), adj2_list.end(), adj1, adj_comp);
-
-    if (v1->id == v2->id)
-    {
-      adj1_list.insert(pos1, adj2);
-    }
-    else
-    {
-      adj1_list.insert(pos1, adj2);
-      adj2_list.insert(pos2, adj1);
-    }
-  }
+void addEdge_safe(GMatchSubgraph &g, VertexID id1, VertexID id2, EdgeDirect d, EdgeLabel el)
+{
+  auto &first = g.getVertex(id1)->value;
+  auto &second = g.getVertex(id2)->value;
+  insert_edge(first.adj, {id2, second.l, d, el});
+  insert_edge(second.adj, {id1, first.l, reverse_direction(d), el});
 }
 
 /**
@@ -288,44 +251,60 @@ bool nlf_filter(GMatchVertex *data_vertex, QueryVertex &query_vertex,
 }
 #endif
 
-bool nlf_filter(GMatchVertex *data_vertex, const QueryVertex &query_vertex)
+// Each triple pattern needs a witness. Homomorphisms may reuse the same
+// witness for different variables; constants and self-loops still constrain it.
+bool nlf_filter(const GMatchVertex *data, const QueryVertex &query)
 {
-  // // 计算数据图、查询图中 顶点与邻接点之间 边NLF 的信息
-  // hash_map<pair<EdgeDirect, EdgeLabel>, int, pair_hash> data_edge_nlf;
-  // hash_map<pair<EdgeDirect, EdgeLabel>, int, pair_hash> query_edge_nlf;
-
-  // // 计算数据图、查询图中顶点的 NLF 信息
-  // hash_map<Label, int> data_nlf;
-  hash_map<AdjEdge, int, AdjEdgeHash> data_nlf;
-
-  hash_map<NlfEdge, int, NlfEdgeHash> data_edge_nlf;
-
-  vector<AdjItem> &data_adj = data_vertex->value.adj;
-  for (int i = 0; i < data_adj.size(); ++i)
+  if (query.value.l >= 0 && query.value.l != data->value.l)
+    return false;
+  for (const AdjItem &required : query.value.adj)
   {
-    data_nlf[AdjEdge(data_adj[i])]++;
-
-    data_edge_nlf[NlfEdge(data_adj[i])]++;
-
-    // data_nlf[data_adj[i].l]++; // 相应标签频率加 1
+    const auto &adj = data->value.adj;
+    if (none_of(adj.begin(), adj.end(), [&](const AdjItem &edge) {
+          return edge.d == required.d && edge.el == required.el &&
+                 (required.l < 0 || required.l == edge.l) &&
+                 (required.id != query.id || edge.id == data->id);
+        }))
+      return false;
   }
+  return true;
+}
 
-  // hash_map<Label, int> query_nlf;
-  hash_map<AdjEdge, int, AdjEdgeHash> query_nlf;
+typedef hash_map<VertexID, QueryPlanVertex> PlanVertexTable;
 
-  hash_map<NlfEdge, int, NlfEdgeHash> query_edge_nlf;
-
-  const vector<AdjItem> &query_adj = query_vertex.value.adj;
-  for (int i = 0; i < query_adj.size(); ++i)
+// Only pull full adjacency for vertices that have more constraints to expand.
+// Keep all qualifying edges, even when several lead to the same data vertex.
+void expand_vertex(GMatchSubgraph &graph, const GMatchVertex &data,
+                   const QueryPlanVertex &role, const PlanVertexTable &plans,
+                   hash_set<VertexID> &next)
+{
+  if (!graph.hasVertex(data.id))
+    addNode(graph, data);
+  for (const AdjItem &edge : data.value.adj)
   {
-    if (query_adj[i].l > 0)
-      query_nlf[AdjEdge(query_adj[i])]++;
-
-    query_edge_nlf[NlfEdge(query_adj[i])]++;
-    // query_nlf[query_adj[i].l]++; // 相应标签频率加 1
+    for (const AdjItem &required : role.child)
+    {
+      if (edge.d != required.d || edge.el != required.el ||
+          (required.l >= 0 && edge.l != required.l))
+        continue;
+      if (!graph.hasVertex(edge.id))
+        addNode(graph, edge.id, edge.l, {});
+      const auto &child = plans.find(required.id)->second;
+      if (!child.child.empty() || !child.partner.empty() || !child.self_edges.empty())
+        next.insert(edge.id);
+    }
+    if (graph.hasVertex(edge.id))
+      addEdge_safe(graph, data.id, edge.id, edge.d, edge.el);
   }
+}
 
-  return nlf(data_nlf, query_nlf) && nlf(data_edge_nlf, query_edge_nlf);
+inline vector<QueryGroup *> seed_groups(const hash_map<Label, vector<QueryGroup *>> &groups, Label label)
+{
+  vector<QueryGroup *> result;
+  for (const auto &entry : groups)
+    if (entry.first == label || entry.first < 0)
+      result.insert(result.end(), entry.second.begin(), entry.second.end());
+  return result;
 }
 
 #ifndef ENABLE_SPARQL
@@ -1075,102 +1054,32 @@ void ComputeLC_join(const vector<QueryPlanVertex> &query_graph, GMatchSubgraph &
   }
 }
 
-void ComputeLC_join2(const vector<QueryPlanVertex> &query_graph, GMatchSubgraph &task_graph, int &Mindext,
-                     vector<VertexID> &GMatchQ, const vector<query_judge> &query_state, vector<VertexID> &intersection_result)
+// Lists remain ID-sorted after filtering. Every bound query edge, including
+// parallel predicates, contributes its own list.
+void ComputeLC_join2(const vector<QueryPlanVertex> &plan, GMatchSubgraph &graph, int depth,
+                     const vector<VertexID> &binding, const vector<query_judge> &state,
+                     vector<VertexID> &result)
 {
-  // 查询点信息
-  const QueryPlanVertex &u = query_graph[Mindext]; // 查询点
-  const VertexID &u_id = u.id;                     // 取得查询点的id
-  const Label &u_l = u.l;                          // 取得查询点标签
-
-  // 查询计划中保存的查询点的信息
-  const query_judge &query_x = query_state[Mindext];          // 取得查询点的各个状态
-  const vector<int> &p_indext = query_x.parents_indext;       // 取得父节点的下标
-  const bool &relabel = query_x.reLabel;                      // 排序前是否有相同的标签
-  const vector<int> &relabel_indext = query_x.reLabel_indext; // 相同标签的下标
-  int p_num = p_indext.size();                                // 父节点数量
-
-  // vector<VertexID> intersection_result;
-  vector<AdjItem> firstCandidate;     // 对第一个点候选点处理的结果
-  vector<vector<AdjItem> *> all_list; // 需要做交集的集合
-  // all_list.resize(p_num);
-
-  for (int i = 0; i < p_indext.size(); ++i)
+  const auto &constraints = state[depth].bound_edges;
+  vector<vector<VertexID>> lists(constraints.size());
+  for (size_t i = 0; i < constraints.size(); ++i)
   {
-    VertexID v_id = GMatchQ[p_indext[i]];
-
-    if (p_num == 1)
+    const BoundEdge &constraint = constraints[i];
+    const auto &source = graph.getVertex(binding[constraint.source_index])->value;
+    auto &ids = lists[i];
+    for (const AdjItem &edge : source.adj)
     {
-      // cout <<"1111"<<endl;
-      if (relabel)
-      {
-        // ComputeCandvre(task_graph, relabel_indext, GMatchQ, u_l, intersection_result, v_id);
-        ComputeCandvre(task_graph, relabel_indext, GMatchQ, u, intersection_result, v_id);
-      }
-      else
-      {
-        // ComputeCandv(task_graph, GMatchQ, u_l, intersection_result, v_id);
-        ComputeCandv(task_graph, GMatchQ, u, intersection_result, v_id);
-      }
-      break;
-      //  cout <<"1111"<<endl;
+      if (edge.d == constraint.direction && edge.el == constraint.predicate &&
+          (plan[depth].l < 0 || plan[depth].l == edge.l) &&
+          (ids.empty() || ids.back() != edge.id))
+        ids.push_back(edge.id);
     }
-
-    else
-    {
-      // cout <<"2222"<<endl;
-      if (i == 0)
-      {
-        if (relabel)
-        {
-          // ComputeCandvre(task_graph, relabel_indext, GMatchQ, u_l, firstCandidate, v_id);
-          ComputeCandvre(task_graph, relabel_indext, GMatchQ, u, firstCandidate, v_id);
-        }
-        else
-        {
-          // ComputeCandv(task_graph, GMatchQ, u_l, firstCandidate, v_id);
-          ComputeCandv(task_graph, GMatchQ, u, firstCandidate, v_id);
-        }
-        if (firstCandidate.size() != 0)
-        {
-          all_list.push_back(&firstCandidate);
-        }
-        else
-        {
-          break;
-        }
-      }
-      else
-      {
-        GMatchVertex *v = task_graph.getVertex(v_id);
-        if (v->value.adj.size() != 0)
-        {
-          all_list.push_back(&(v->value.adj));
-        }
-        else
-        {
-          all_list.clear();
-          break;
-        }
-      }
-      // cout <<"2222"<<endl;
-    }
+    if (ids.empty()) return;
   }
-
-  // cout <<"3333"<<endl;
-  if (all_list.size() > 1)
-  {
-    // cout << "aa" << endl;
-    leapfrog_join(all_list, intersection_result);
-    // cout << "bb" << endl;
-  }
-  // cout <<"3333"<<endl;
-
-  // cout <<"查询点："<<u_id<<endl;
-  // for(VertexID id :intersection_result){
-  //     cout << id<<" ";
-  // }
-  // cout << endl;
+  if (lists.size() == 1)
+    result.swap(lists.front());
+  else if (!lists.empty())
+    leapfrog_join(lists, result);
 }
 
 #ifndef ENABLE_SPARQL_DEBUG
@@ -1517,168 +1426,50 @@ size_t graph_matching_comm(const vector<QueryPlanVertex> &query_graph, GMatchSub
 }
 
 // 单个子图匹配结果
-size_t graph_matching3(const vector<QueryPlanVertex> &query_graph, GMatchSubgraph &task_graph,
-                       vector<VertexID> &GMatchQ, size_t &count, const vector<query_judge> &query_state)
+size_t graph_matching3(const vector<QueryPlanVertex> &plan, GMatchSubgraph &graph,
+                       vector<VertexID> &binding, size_t &count, const vector<query_judge> &state)
 {
-  // cout << "进入graph_matching3" << endl;
-  int Mindext = GMatchQ.size(); // 当前匹配到的查询点的下标
-  // cout << "第" << Mindext << "个顶点" << endl;
-  if (Mindext == query_graph.size())
-  { // 进入到最后一个点的时候
-    // cout << "进入到最后一个点" << endl;
-    ++count;
-
-    // cout << "----------------------数据图----------------------" << endl;
-    // print_vec(GMatchQ);
-    // cout << "----------------------查询图----------------------" << endl;
-    // for (const auto &v : query_graph)
-    //   cout << v.id << " ";
-    // cout << endl;
-  }
-  else
+  const size_t depth = binding.size();
+  const auto &self_edges = plan[depth - 1].self_edges;
+  if (!self_edges.empty())
   {
-
-    vector<VertexID> vcandidate; // 保存查询点得到的候选点
-
-#if ENABLE_LEAPFORG_JOIN == 0
-    // 普通做交集
-    ComputeLC(query_graph, task_graph, Mindext, GMatchQ, query_state, vcandidate);
-#elif ENABLE_LEAPFORG_JOIN == 1
-    // leapfrog_join
-    // cout <<"ComputeLC_join2"<<endl;
-    ComputeLC_join2(query_graph, task_graph, Mindext, GMatchQ, query_state, vcandidate);
-    // cout <<"ComputeLC_join3"<<endl;
-#endif
-
-    // 如果候选点数量为0；
-    //  cout <<"结果1"<<endl;
-    if (vcandidate.size() == 0)
-      ;
-    else if (Mindext == query_graph.size() - 1)
-    { // 如果查询点是最后的点候选点
-      for (VertexID id : vcandidate)
-      {
-        GMatchQ.push_back(id);
-
-        // cout << "----------------------数据图----------------------" << endl;
-        // print_vec(GMatchQ);
-        // cout << "----------------------查询图----------------------" << endl;
-        // for (const auto &v : query_graph)
-        //   cout << v.id << " ";
-        // cout << endl;
-
-        count++;
-        GMatchQ.pop_back();
-      }
-      // count = count + vcandidate.size();
-    }
-    else if (query_state[Mindext].tag_last)
-    { // 如果最后点可以特殊处理
-      for (VertexID id : vcandidate)
-      {
-        GMatchQ.push_back(id);
-        GMatchVertex *v = task_graph.getVertex(id);
-        Label ue_l = query_graph[Mindext + 1].l;
-        vector<AdjItem> &v_adj = v->value.adj;
-        const auto &parent_adj = query_graph[Mindext + 1].parent;
-        const auto &partner_adj = query_graph[Mindext + 1].partner;
-        const auto &child_adj = query_graph[Mindext + 1].child;
-        // cout << "------------------_my_rank=" << _my_rank << "-------------------------------------" << endl;
-        // cout << "data_graph v.l=" << v->value.l << ", data_graph v.id=" << v->id << ", next query v.l=" << ue_l << ", next query v.id=" << query_graph[Mindext + 1].id << endl;
-        // for (int j = 0; j < v_adj.size(); j++)
-        // {
-        //   cout << "adj.l=" << v_adj[j].l << ", adj.d=" << v_adj[j].d << ", adj.el=" << v_adj[j].el << endl;
-        // }
-        // for (int k = 0; k < parent_adj.size(); ++k)
-        // {
-        //   cout << "parent_adj.l=" << parent_adj[k].l << ", parent_adj.d=" << parent_adj[k].d << ", parent_adj.el=" << parent_adj[k].el << endl;
-        // }
-        // for (int k = 0; k < partner_adj.size(); ++k)
-        // {
-        //   cout << "partner_adj.l=" << partner_adj[k].l << ", partner_adj.d=" << partner_adj[k].d << ", partner_adj.el=" << partner_adj[k].el << endl;
-        // }
-        // for (int k = 0; k < child_adj.size(); ++k)
-        // {
-        //   cout << "child_adj.l=" << child_adj[k].l << ", child_adj.d=" << child_adj[k].d << ", child_adj.el=" << child_adj[k].el << endl;
-        // }
-
-        for (int j = 0; j < v_adj.size(); j++)
-        {
-          if (v_adj[j].l == ue_l || ue_l < 0)
-          {
-            bool isValid = false;
-
-            for (int k = 0; k < parent_adj.size(); ++k)
-            {
-              if (parent_adj[k].l == v->value.l || parent_adj[k].l < 0)
-              {
-                if (v_adj[j].d != parent_adj[k].d && v_adj[j].el == parent_adj[k].el)
-                {
-                  isValid = true;
-                  break;
-                }
-              }
-            }
-            if (!isValid)
-            {
-              for (int k = 0; k < partner_adj.size(); ++k)
-              {
-                if (partner_adj[k].l == v->value.l || partner_adj[k].l < 0)
-                {
-                  if (v_adj[j].d != partner_adj[k].d && v_adj[j].el == partner_adj[k].el)
-                  {
-                    isValid = true;
-                    break;
-                  }
-                }
-              }
-            }
-            if (!isValid)
-            {
-              for (int k = 0; k < child_adj.size(); ++k)
-              {
-                if (child_adj[k].l == v->value.l || child_adj[k].l < 0)
-                {
-                  if (v_adj[j].d != child_adj[k].d && v_adj[j].el == child_adj[k].el)
-                  {
-                    isValid = true;
-                    break;
-                  }
-                }
-              }
-            }
-
-            if (isValid)
-            {
-              GMatchQ.push_back(v_adj[j].id);
-
-              // cout << "----------------------数据图----------------------" << endl;
-              // print_vec(GMatchQ);
-              // cout << "----------------------查询图----------------------" << endl;
-              // for (const auto &v : query_graph)
-              //   cout << v.id << " ";
-              // cout << endl;
-
-              count++;
-              GMatchQ.pop_back();
-            }
-          }
-        }
-        // cout << "-------------------------------------------------------" << endl;
-        GMatchQ.pop_back();
-      }
-      // cout << "end for" << endl;
-    }
-    else
+    auto *vertex = graph.getVertex(binding.back());
+    for (EdgeLabel predicate : self_edges)
     {
-      for (VertexID id : vcandidate) // 不是最后的点
-      {
-        GMatchQ.push_back(id);
-        graph_matching3(query_graph, task_graph, GMatchQ, count, query_state);
-        GMatchQ.pop_back();
-      }
+      AdjItem loop{vertex->id, vertex->value.l, EdgeDirect::OUT, predicate};
+      if (!binary_search(vertex->value.adj.begin(), vertex->value.adj.end(), loop, edge_less))
+        return 0;
     }
-    // cout <<"结果2"<<endl;
+  }
+  if (depth == plan.size())
+  {
+#ifdef PSPARQL_TRACE_BINDINGS
+    // Test builds emit the complete mapping in one write per result.
+    ostringstream row;
+    row << "BIND";
+    for (size_t i = 0; i < depth; ++i)
+      row << ' ' << plan[i].id << '=' << binding[i];
+    row << '\n';
+    fputs(row.str().c_str(), stdout);
+#endif
+    ++count;
+    return 0;
+  }
+
+  vector<VertexID> candidates;
+  ComputeLC_join2(plan, graph, depth, binding, state, candidates);
+#ifndef PSPARQL_TRACE_BINDINGS
+  if (depth + 1 == plan.size() && plan[depth].self_edges.empty())
+  {
+    count += candidates.size();
+    return 0;
+  }
+#endif
+  for (VertexID id : candidates)
+  {
+    binding.push_back(id);
+    graph_matching3(plan, graph, binding, count, state);
+    binding.pop_back();
   }
   return 0;
 }

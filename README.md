@@ -55,6 +55,25 @@ Sample/query_graph:
 ```
 
 
+## RDF conversion and counting
+
+The standalone converter uses Raptor 2 (development headers and library).
+Compile it once and convert the data and its queries together so that constants
+and predicates share one dictionary. Input is one triple per line. Query
+patterns can use variables in subject and object positions and fixed predicates.
+Extract the triple patterns from the SPARQL WHERE block before conversion.
+
+```sh
+c++ -O2 -std=c++11 data_proc/data_proc.cpp -o data_proc/data_proc $(pkg-config --cflags --libs raptor2)
+data_proc/data_proc data.nt data.adj q1.patterns q1.adj q2.patterns q2.adj
+```
+
+With no arguments the converter uses the original YAGO2 filenames. Each
+distinct directed RDF triple is kept once. Parallel predicates and reciprocal
+edges remain distinct. The matcher counts complete BGP bindings, including
+bindings in which two variables refer to the same RDF term. For SELECT without
+DISTINCT this preserves the number of projected rows.
+
 ## Configuration
 
 In the `ydhdfs2.h` file in the `$PSP_PATH/system/util` (**$PSP_PATH** is the root directory of the project), you need to specify the hostname and port of the master machine (aka NameNode) of the Hadoop cluster. 
@@ -99,7 +118,7 @@ mpiexec -n <N> -f <hosts> ./run <data_graph_path> <query_graph_path> <t>
 # cd ~
 # scp run slave1:~
 # scp run slave2:~
-# mpiexec --allow-run-as-root -mca btl_tcp_if_include eno1 -host master,slave1,slave2 -n 3 ./run /psp/sample_data/data_graph_edge6.txt /psp/sample_data/query_graph_edge2.txt 3
+# mpiexec --allow-run-as-root -mca btl_tcp_if_include eno1 -host master,slave1,slave2 -n 3 ./run /psp/sample_data/data_graph_edge1_2.txt /psp/sample_data/query_graph_edge1.txt 3
 ```
 
 where **N** is the number of machines/processes, **hosts** is the hosts file, **data_graph_path** is the HDFS path of the data graph, **query_graph_path** is the HDFS path of the query graph, and **t** is the number of threads per machine/process.
@@ -110,19 +129,30 @@ If you only want to test on a single machine, you can execute the following comm
 
 ```shell
 ./run <data_graph_path> <query_graph_path> <t>
-# ./runWithEnv ./run /psp/sample_data/data_graph.txt /psp/sample_data/query_graph.txt 2
+# ./runWithEnv ./run /psp/sample_data/data_graph_edge1_2.txt /psp/sample_data/query_graph_edge1.txt 2
 ```
 
 ### Results of the run
 
-When you test on sample data, you can get the following results.
+For `data_graph_edge1_2.txt` with `query_graph_edge1.txt`, the final count is:
 
-```shell
-Load Time : xxxxx seconds
-running
-Task Time : xxxxx seconds
-the number of matching results for query1 is 6
+```text
+the number of matching results for query is: 6
 ```
 
-where **Load Time** is the time to load data, **Task Time** is the total time the program runs. For the sample query graph, the id of the root vertex of the query plan is 1 (i.e. 1 in *query**1***), and the number of matching results on the sample data graph is 6. If you input multiple query graphs, please distinguish the number of matching results from different query graphs by the id of the root vertex of the query plan.
+## Count regression tests
 
+Build the matcher on the deployment machine before distributing it to workers.
+For small test graphs, a trace build emits each complete binding. The regression
+script compares their multiset and the reported count against a triple-pattern
+join. Use the same binary on all MPI ranks.
+
+```sh
+make -B -C app_gmatch CXXFLAGS=-DPSPARQL_TRACE_BINDINGS
+python3 tests/rdf_terms.py data_proc/data_proc
+python3 tests/rdf_counts.py --hdfs-root /tmp --threads 2 -- mpiexec -n 4 /absolute/path/to/run
+```
+
+Repeat with `CXXFLAGS="-DPSPARQL_TRACE_BINDINGS -DENABLE_QUERY_GRAPH_COMBINE=0"`
+to check task merging. Rebuild without the trace flag for benchmarks. With a
+normal build the test runner accepts `--counts-only`.

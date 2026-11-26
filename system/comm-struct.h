@@ -49,7 +49,7 @@ struct pair_hash
 };
 
 // 任务的定义
-typedef Task<GMatchVertex, char> GMatchTask; // context = step
+typedef Task<GMatchVertex, int> GMatchTask; // context = step
 
 struct MatchvStruct
 {
@@ -67,7 +67,8 @@ struct QueryPlanVertex
   vector<AdjItem> parent;  // 父节点
   vector<AdjItem> partner; // 兄弟节点
   vector<AdjItem> child;   // 子节点
-  int degree;              // 该点的度数
+  vector<EdgeLabel> self_edges; // required self-loop predicates
+  int degree = 0;              // 该点的度数
 };
 
 /**
@@ -95,8 +96,16 @@ struct comm_notree
   int pointx;
   int pointy;
 };
+struct BoundEdge
+{
+  int source_index;
+  EdgeDirect direction; // viewed from the already bound source
+  EdgeLabel predicate;
+};
+
 struct query_judge
 {
+  vector<BoundEdge> bound_edges;
   // bool last_tag;//是否有最后一个点
   // vector<bool> reLable;//与之前的点是否有重复的标签
   // vector<VertexID> order_before_index;//排序之前的点标签的下标

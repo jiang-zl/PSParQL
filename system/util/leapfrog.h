@@ -14,7 +14,7 @@ inline bool compare(const vector<AdjItem> *p1, const vector<AdjItem> *p2)
   return (*p1)[0].id < (*p2)[0].id;
 }
 
-inline bool compare2(const vector<VertexID> p1, const vector<VertexID> p2)
+inline bool compare2(const vector<VertexID> &p1, const vector<VertexID> &p2)
 {
   return p1[0] < p2[0];
 }

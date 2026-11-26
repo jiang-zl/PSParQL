@@ -400,6 +400,11 @@ public:
       generated_task_map.erase_index(key);
     }
 
+    // Merged seeds may request the same neighbor. Fetch each vertex once
+    // before registering the task with the local/remote cache.
+    auto &requests = task->to_pull;
+    sort(requests.begin(), requests.end());
+    requests.erase(unique(requests.begin(), requests.end()), requests.end());
     while (task->pull_all(counter, map_task)) // may call add2map(.) task 拉取顶点，如果该任务需要的顶点已经全部拉取到本地，则返回 true，可以继续下一轮迭代；否则，拉取远程顶点，返回 false
     {
       // cout << "task->pull_all(counter, map_task) " << endl;

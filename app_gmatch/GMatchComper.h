@@ -83,59 +83,24 @@ public:
     const hash_map<VertexID, QueryPlanVertex> &query_plan_vertex_table = *(hash_map<VertexID, QueryPlanVertex> *)global_query_plan_vertex_table;     // 查询计划点表
     const hash_map<Label, vector<QueryGroup *>> &label_query_graph_group = *(hash_map<Label, vector<QueryGroup *>> *)global_label_query_graph_group; // 查询图分组，key：查询组的标签，value：对应标签的查询组，用于加速任务的生成
 
-    const vector<QueryGroup *> *query_group_vec = nullptr;
-    if (label_query_graph_group.find(v->value.l) == label_query_graph_group.end())
+    for (const QueryGroup *group : seed_groups(label_query_graph_group, v->value.l))
     {
-      // return;
-      query_group_vec = &label_query_graph_group.begin()->second;
-    }
-    else
-      query_group_vec = &label_query_graph_group.find(v->value.l)->second;
-    // 遍历 v 标签对应的查询组中的所有查询图
-    // const vector<QueryGroup *> &query_group_vec = label_query_graph_group.find(v->value.l)->second;
-    // for (const QueryGroup *group : query_group_vec)
-    for (const QueryGroup *group : *query_group_vec)
-    {
-      const vector<VertexID> &query_vertexs = group->query_vertexs;
-      // 判断当前组查询图的标签是否符合条件
-      const VertexT *root = query_graph_table.find(query_vertexs[0])->second;
-      // if (v->value.l != root->value.l)
-      //     continue; // 数据点 v 与当前组查询图的标签不一致，则继续下一组
-
-      // 以分组为单位生成任务
+      const auto &query_vertexs = group->query_vertexs;
       hash_set<VertexID> query_graph_id_set; // 当前数据点 v 能够匹配到的查询图根顶点 id
       int max_step = 0;
       // 遍历查询组内所有的查询图，逐个判断是否可以生成 task
       for (const auto &qv : query_vertexs)
       {
         const VertexT &root = *(query_graph_table.find(qv)->second);
-        if ((v->value.l == root.value.l || root.value.l < 0) &&
-            // v->value.adj.size() >= root.value.adj.size()
-            v->value.inAdjSize >= root.value.inAdjSize &&
-            v->value.outAdjSize >= root.value.outAdjSize) // LDF 过滤
+        if (nlf_filter(v, root))
         {
-          if (nlf_filter(v, root)) // NLF 过滤
-          {
-            query_graph_id_set.insert(root.id);
-            if (plan_order_map.find(root.id)->second.size() > max_step)
-            {
-              max_step = plan_order_map.find(root.id)->second.size();
-            }
-          }
+          query_graph_id_set.insert(root.id);
+          max_step = std::max(max_step, (int)plan_order_map.find(root.id)->second.size());
         }
       }
 
       if (query_graph_id_set.empty())
         continue;
-
-      // 获取各个查询图根顶点的子查询点标签，从而便于拉取顶点
-      hash_map<Label, bool> child_query_vertex; // key：子查询点标签，value：标记子查询点是否需要拉取
-      vector<const GMatchVertex *> only_parent_query_vertex;
-      for (const auto &root_id : query_graph_id_set)
-      {
-        get_child_query_vertex(query_plan_vertex_table.find(root_id)->second, child_query_vertex,
-                               query_graph_table, query_plan_vertex_table, only_parent_query_vertex);
-      }
 
       // 判断该 bucket 中是否含有任务，如果含有任务，则与其合并，不需要单独生成任务
       GMatchTask *t = NULL;
@@ -149,12 +114,6 @@ public:
       vector<VertexID> next_level_data_vertex; // 匹配下一层所需的数据点 id
       for (const auto &adj_v : nbs)
       {
-        // 判断当前顶点是否需要拉取
-        hash_map<Label, bool>::iterator child_query_vertex_it = child_query_vertex.find(adj_v.l);
-        // if (child_query_vertex_it != child_query_vertex.end())
-        // {
-        //   next_level_data_vertex.push_back(adj_v.id);
-        // }
         next_level_data_vertex.push_back(adj_v.id);
       }
       // 根据该 task 拉取的顶点生成相应的签名信息，从而获取 bucket
@@ -188,72 +147,19 @@ public:
       }
 
       // 将 v 加入到任务子图中，同时拉取相应的邻居点
-      if (!t->subG.hasVertex(v->id))
-      {
-        t->subG.roots.push_back(*v); // 将根顶点添加到子图的根顶点列表中
-        addNode(t->subG, *v);        // 将根顶点添加到子图中
-      }
-
+      // Each locally owned seed is spawned once. Neighbors already in the
+      // merged subgraph must still be enumerated when they become seeds.
+      t->subG.roots.push_back(*v);
       t->subG.max_step = max(max_step, t->subG.max_step);
       t->context = 1; // context is step number
       t->group_id = group->group_id;
 
-      // 拉取相应标签的顶点
-      hash_map<VertexID, set<VertexID>> &candidate_vertexs = t->subG.candidate_vertexs;
-      for (const auto &adj_v : nbs)
-      {
-        // 判断当前顶点是否需要拉取
-        hash_map<Label, bool>::iterator child_query_vertex_it = child_query_vertex.find(adj_v.l);
-        if (child_query_vertex_it != child_query_vertex.end())
-        {
-          // 判断当前顶点匹配到的查询点是否只有父节点
-          if (child_query_vertex_it->second)
-          { // 如果只有父节点，则不需要拉取，直接加入到任务子图中
-            if (!t->subG.hasVertex(adj_v.id))
-            {
-              vector<VertexID> vec;
-              // if (local_table.find(adj_v.id) == local_table.end())
-              //   addNode(t->subG, adj_v.id, adj_v.l, vec);
-              // else
-              // {
-              //   VertexT *pAdjV = local_table[adj_v.id];
-              //   addNode(t->subG, adj_v.id, adj_v.l, vec, pAdjV->value.adj);
-              // }
-              addNode(t->subG, adj_v.id, adj_v.l, vec);
-            }
-            // 添加边
-            addEdge_safe(t->subG, v->id, adj_v.id, adj_v.d, adj_v.el);
-            for (const auto &opqv : only_parent_query_vertex)
-            {
-              if (opqv->value.l == adj_v.l || opqv->value.l < 0)
-                candidate_vertexs[opqv->id].insert(adj_v.id);
-            }
-          }
-          else
-          { // 如果含有兄弟节点或子节点，则需要拉取
-            t->pull(adj_v.id);
-          }
-        }
-        else
-        {
-          // 如果只有父节点，则不需要拉取，直接加入到任务子图中
-          if (!t->subG.hasVertex(adj_v.id))
-          {
-            vector<VertexID> vec;
-            addNode(t->subG, adj_v.id, adj_v.l, vec);
-          }
-          // 添加边
-          addEdge_safe(t->subG, v->id, adj_v.id, adj_v.d, adj_v.el);
-          for (const auto &opqv : only_parent_query_vertex)
-          {
-            if (opqv->value.l == adj_v.l || opqv->value.l < 0)
-              candidate_vertexs[opqv->id].insert(adj_v.id);
-          }
-
-          // 如果含有兄弟节点或子节点，则需要拉取
-          t->pull(adj_v.id);
-        }
-      }
+      hash_set<VertexID> next;
+      for (VertexID root : query_graph_id_set)
+        expand_vertex(t->subG, *v, query_plan_vertex_table.find(root)->second,
+                      query_plan_vertex_table, next);
+      for (VertexID id : next)
+        t->pull(id);
 #if ENABLE_QUERY_GRAPH_COMBINE == 0
       add_task(t); // 不进行查询图内的任务合并时，直接添加任务即可
 #elif ENABLE_QUERY_GRAPH_COMBINE == 1
@@ -281,71 +187,13 @@ public:
                      hash_map<VertexID, vector<AdjItem>> &adj_map, const hash_set<Label> &query_vertex_label,
                      hash_map<VertexID, list<VertexT *>> &vet_map)
   {
-    hash_map<AdjEdge, int, AdjEdgeHash> data_nlf;
-
-    hash_map<NlfEdge, int, NlfEdgeHash> data_edge_nlf;
-
-    // // 计算数据图、查询图中顶点的 NLF 信息
-    // hash_map<Label, int> data_nlf;
-    vector<AdjItem> &data_adj = data_vertex->value.adj;
-    // vector<AdjItem> trimed_data_adj; // 剪枝后的数据点邻接表
-    for (int i = 0; i < data_adj.size(); ++i)
-    {
-      data_nlf[AdjEdge(data_adj[i])]++;
-
-      data_edge_nlf[NlfEdge(data_adj[i])]++;
-
-      // data_nlf[data_adj[i].l]++; // 相应标签频率加 1
-
-      // if (query_vertex_label.find(data_adj[i].l) != query_vertex_label.end())
-      //   trimed_data_adj.push_back(data_adj[i]);
-    }
-
-    hash_map<VertexID, list<VertexT *>>::iterator it;
-    for (int i = 0; i < current_level_vertex.size(); i++)
-    {
-      QueryVertex &query_vertex = current_level_vertex[i];
-      // 根据 LDF 进行过滤
-      if ((data_vertex->value.l == query_vertex.value.l || query_vertex.value.l < 0) &&
-          // data_vertex->value.adj.size() >= query_vertex.value.adj.size()
-          data_vertex->value.inAdjSize >= query_vertex.value.inAdjSize &&
-          data_vertex->value.outAdjSize >= query_vertex.value.outAdjSize)
+    for (const auto &role : current_level_vertex)
+      if (nlf_filter(data_vertex, role))
       {
-        hash_map<AdjEdge, int, AdjEdgeHash> query_nlf;
-
-        hash_map<NlfEdge, int, NlfEdgeHash> query_edge_nlf;
-
-        // hash_map<Label, int> query_nlf;
-        vector<AdjItem> &query_adj = query_vertex.value.adj;
-        for (int i = 0; i < query_adj.size(); ++i)
-        {
-          if (query_adj[i].l > 0)
-            query_nlf[AdjEdge(query_adj[i])]++;
-
-          query_edge_nlf[NlfEdge(query_adj[i])]++;
-          // query_nlf[query_adj[i].l]++; // 相应标签频率加 1
-        }
-
-        // 根据 NLF 进行过滤
-        if (nlf(data_nlf, query_nlf) && nlf(data_edge_nlf, query_edge_nlf))
-        {
-          if (adj_map.find(data_vertex->id) == adj_map.end())
-            adj_map.insert(make_pair(data_vertex->id, data_adj));
-
-          it = vet_map.find(query_vertex.id);
-          if (it == vet_map.end())
-          {
-            list<VertexT *> vec;
-            vec.push_back(data_vertex);
-            vet_map.insert(make_pair(query_vertex.id, vec));
-          }
-          else
-          {
-            it->second.push_back(data_vertex);
-          }
-        }
+        vet_map[role.id].push_back(data_vertex);
+        if (adj_map.find(data_vertex->id) == adj_map.end())
+          adj_map[data_vertex->id] = data_vertex->value.adj;
       }
-    }
   }
 
 #ifndef ENABLE_SPARQL
@@ -549,79 +397,24 @@ public:
   }
 #endif
 
-  const AdjItem *search_with_lower_bound(const vector<AdjItem> &adj_vec, VertexID id)
+  // Both endpoints are known here. One neighbor must satisfy every
+  // directed predicate between the two query roles.
+  void prune_partners(list<VertexT *> &sources, const list<VertexT *> &targets,
+                      const QueryPlanVertex &role, VertexID target_role)
   {
-    int l = 0, r = (int)adj_vec.size();
-    while (l < r)
-    {
-      int mid = (r - l) / 2 + l;
-      if (adj_vec[mid].id >= id)
-        r = mid;
-      else
-        l = mid + 1;
-    }
-    return &adj_vec[l];
-  }
-
-  /**
-   * 检查同层节点之间的边关系（v1-v2），删除非法候选点 (使用leapfrog算法)
-   * 注意：d是v1-v2之间的方向，在计算v2-v1时，要用反方向d_
-   *
-   * @param v1_candidate_list    v1 顶点的候选点列表
-   * @param v2_candidate_list    v2 顶点的候选点列表
-   */
-  void check_edge(list<VertexT *> &v1_candidate_list, list<VertexT *> &v2_candidate_list,
-                  hash_map<VertexID, vector<AdjItem>> &adj_map, EdgeDirect d, EdgeLabel el)
-  {
-    for (list<VertexT *>::iterator it1 = v1_candidate_list.begin(); it1 != v1_candidate_list.end();)
-    {
-      bool isValid = false;
-      vector<AdjItem> &adj1_vec = (*it1)->value.adj;
-      sort(adj1_vec.begin(), adj1_vec.end(), adj_comp);
-
-      for (list<VertexT *>::iterator it2 = v2_candidate_list.begin(); it2 != v2_candidate_list.end(); ++it2)
-      {
-        const AdjItem *adj1 = search_with_lower_bound(adj1_vec, (*it2)->id);
-        if (adj1->id == (*it2)->id && d == adj1->d && el == adj1->el)
+    sources.remove_if([&](const VertexT *source) {
+      const auto &adj = source->value.adj;
+      return none_of(targets.begin(), targets.end(), [&](const VertexT *target) {
+        for (const AdjItem &required : role.partner)
         {
-          isValid = true;
-          break;
+          if (required.id != target_role) continue;
+          AdjItem edge{target->id, target->value.l, required.d, required.el};
+          if (!binary_search(adj.begin(), adj.end(), edge, edge_less))
+            return false;
         }
-      }
-      if (!isValid)
-      {
-        it1 = v1_candidate_list.erase(it1);
-        if (0 == v1_candidate_list.size())
-          return;
-      }
-      else
-        ++it1;
-    }
-
-    for (list<VertexT *>::iterator it2 = v2_candidate_list.begin(); it2 != v2_candidate_list.end();)
-    {
-      bool isValid = false;
-      vector<AdjItem> &adj2_vec = (*it2)->value.adj;
-      sort(adj2_vec.begin(), adj2_vec.end(), adj_comp);
-
-      for (list<VertexT *>::iterator it1 = v1_candidate_list.begin(); it1 != v1_candidate_list.end(); ++it1)
-      {
-        const AdjItem *adj2 = search_with_lower_bound(adj2_vec, (*it1)->id);
-        if (adj2->id == (*it1)->id && d != adj2->d && el == adj2->el)
-        {
-          isValid = true;
-          break;
-        }
-      }
-      if (!isValid)
-      {
-        it2 = v2_candidate_list.erase(it2);
-        if (0 == v2_candidate_list.size())
-          return;
-      }
-      else
-        ++it2;
-    }
+        return true;
+      });
+    });
   }
 
 #ifndef ENABLE_SPARQL
@@ -655,627 +448,55 @@ public:
   /**
    * 执行单个任务
    */
-  bool single_compute(SubgraphT &task_graph, ContextT &context, vector<VertexT *> &frontier)
+  bool single_compute(SubgraphT &graph, ContextT &context, vector<VertexT *> &frontier)
   {
-    const hash_map<VertexID, QueryGroup *> &lsh_query_graph_group = *(hash_map<VertexID, QueryGroup *> *)global_lsh_query_graph_group; // key：查询组 id，value：对应的查询组
-    const hash_map<VertexID, QueryPlanVertexVec> &plan_order_map = *(hash_map<VertexID, QueryPlanVertexVec> *)global_query_plan_vertex_order;
-    const hash_map<VertexID, QueryPlanVertexVecList> &q = *(hash_map<VertexID, QueryPlanVertexVecList> *)global_query_plan_vertex_order_list;
-    const hash_map<VertexID, vector<query_judge>> &combine_tag_table = *(hash_map<VertexID, vector<query_judge>> *)global_query_combine_tag;
-
-    const hash_map<VertexID, vector<int>> &query_tag_all = *(hash_map<VertexID, vector<int>> *)global_query_vertex_tag;
-    const hash_map<VertexID, bool> &query_last_all = *(hash_map<VertexID, bool> *)global_query_last;
-
-    const hash_map<VertexID, QueryVertexVec> &order_list_table = *(hash_map<VertexID, QueryVertexVec> *)global_query_vertex_order;
-    const hash_map<VertexID, EdgeVector> &edge_vec_table = *(hash_map<VertexID, EdgeVector> *)global_same_layer_edge;
-    const hash_map<VertexID, QueryPlanVertex> &query_plan_vertex_table = *(hash_map<VertexID, QueryPlanVertex> *)global_query_plan_vertex_table; // 查询计划点表
-    const hash_map<VertexID, VertexT *> &query_graph_table = *(hash_map<VertexID, VertexT *> *)global_query_graph_table;                         // 查询图顶点表
-    bool is_end = (context >= task_graph.max_step - 1);                                                                                          // 标记是否结束
-
-    hash_map<VertexID, vector<AdjItem>> adj_map;                                               // 符合条件的顶点的邻接表
-    const hash_set<Label> &query_vertex_label = *(hash_set<Label> *)global_query_vertex_label; // 查询图中所有查询点的标签集合
-    // 查询图对应的分组
-    const hash_map<VertexID, QueryGroup *> &lsh_query_graph_group_table = *(hash_map<VertexID, QueryGroup *> *)global_lsh_query_graph_group_table; // 查询图分组表，key：查询图 id，value：查询组，用于记录每个查询图对应的分组
-    const vector<VertexID> &matched_query_graph_id = task_graph.query_vertexs;
-
-    // cout << "query graph: " << matched_query_graph_id[0]
-    //      << ", comm match size: " << task_graph.comm_match.size()
-    //      << ", context: " << (int)context
-    //      << ", max step: " << task_graph.max_step << endl;
-    // 判断当前任务是否含有公共部分结果，并且是否可以结束
-    // if (task_graph.comm_match.size() > 0 && context >= task_graph.max_step)
-    if (NULL != task_graph.comm_match && context >= task_graph.max_step)
+    const auto &plans = *static_cast<const PlanVertexTable *>(global_query_plan_vertex_table);
+    const auto &orders = *static_cast<const hash_map<VertexID, QueryVertexVec> *>(global_query_vertex_order);
+    const auto &same_level = *static_cast<const hash_map<VertexID, EdgeVector> *>(global_same_layer_edge);
+    const VertexID root = graph.query_vertexs.front();
+    const auto &levels = orders.find(root)->second;
+    hash_set<VertexID> next;
+    if (static_cast<size_t>(context) < levels.size())
     {
-      vector<VertexT> &tg_vertexes = task_graph.vertexes;
-
-      // cout << "公共部分匹配结果" << endl;
-      // for (const auto &match : task_graph.comm_match)
-      // {
-      //     for (const auto &r : match)
-      //     {
-      //         cout << r << " ";
-      //     }
-      //     cout << endl;
-      // }
-
-#if ENABLE_DEBUG
-      // printf("\n======= 匹配的查询点： ");
-      // for (const auto &v : task_graph.query_vertexs)
-      // {
-      //     printf("%d ", v);
-      // }
-      // printf(" ===============\n");
-
-      // printf("======= 种子顶点： ");
-      // for (const auto &v : task_graph.roots)
-      // {
-      //     printf("%d ", v.id);
-      // }
-      // printf(" ===============\n");
-      // printf("任务子图结构如下：\n");
-      // for (const auto &v : tg_vertexes)
-      // {
-      //     printf("(%d,%d) 邻接表：", v.id, v.value.l);
-      //     for (const auto &adj_v : v.value.adj)
-      //     {
-      //        printf("(%d,%d) ", adj_v.id, adj_v.l);
-      //     }
-      //     printf("\n");
-      // }
-      // 输出任务子图
-      // cout << endl << "======= 匹配的查询点： ";
-      // for (const auto &v : task_graph.query_vertexs)
-      // {
-      //     cout << v << " ";
-      // }
-      // cout << " ===============" << endl;
-
-      // cout << "======= 种子顶点： ";
-      // for (const auto &v : task_graph.roots)
-      // {
-      //     cout << v.id << " ";
-      // }
-      // cout << " ===============" << endl;
-
-      // cout << "任务子图结构如下：" << endl;
-      // for (const auto &v : tg_vertexes)
-      // {
-      //     cout << "(" << v.id << "," << v.value.l << ")" << "邻接表：";
-      //     for (const auto &adj_v : v.value.adj)
-      //     {
-      //         cout << "(" << adj_v.id << "," << adj_v.l << ") ";
-      //     }
-      //     cout << endl;
-      // }
-#endif
-      VertexID query_graph_id = task_graph.query_vertexs[0];                                  // 获得查询图的 id
-      const QueryGroup *group_ptr = lsh_query_graph_group_table.find(query_graph_id)->second; // 查询组
-      GMatchSubgraph comm_subgraph = group_ptr->comm_subgraph;                                // 公共子图
-      vector<QueryVertex> comm_subgraph_vertexes = comm_subgraph.vertexes;                    // 公共子图的点
-
-      // 先将每个查询点的匹配数量设置为0
-      hash_map<VertexID, size_t> each_query_count;
-      for (auto &each_query : q)
+      hash_map<VertexID, list<VertexT *>> candidates;
+      for (const auto &role : levels[context])
       {
-        // cout <<"查询图id："<<each_query.first <<endl;
-        each_query_count[each_query.first] = 0;
+        auto &pool = candidates[role.id];
+        for (auto *data : frontier)
+          if (nlf_filter(data, role))
+            pool.push_back(data);
       }
 
-      vector<VertexID> GMatchQ;           // 保存结果的数据
-      QueryPlanVertexVecList query_graph; // 查询图
-      size_t count = 0;
-      bool query_last = false;
-
-      vector<vector<VertexID>> &comm_matchQ = *task_graph.comm_match; // 保存公共部分匹配
-      vector<VertexID> MatchQ;
-      const vector<query_judge> comm_tag = combine_tag_table.find(query_graph_id)->second; // 查询点的状态
-      vector<vector<VertexID>> matchQList;
-      query_graph = q.find(query_graph_id)->second;
-      const vector<query_judge> query_state = combine_tag_table.find(query_graph_id)->second;
-      count = 0;
-
-      // 一开始回溯
-      vector<GMatchVertex> &root = task_graph.roots;
-      // cout << "-------the root size() = "<<root.size() <<endl;
-      // cout << "-------the root"<<query_graph_id <<" task_graph.size =" << task_graph.vertexes.size() << endl;
-      // graph_matching_comm4(query_graph,task_graph,comm_matchQ,GMatchQ,count,query_state);
-      // cout<<"公共匹配数量："<<comm_matchQ.size()<<endl;
-      if (comm_matchQ.size() > 0)
+      for (const auto &pair : same_level.find(root)->second[context])
       {
-        graph_matching_comm_root(query_graph, task_graph, comm_matchQ, GMatchQ, count, query_state);
-
-        // 强制从头开始匹配
-        // graph_matching_root(query_graph,task_graph, GMatchQ, count,query_state);
+        auto &first = candidates[pair.first];
+        auto &second = candidates[pair.second];
+        prune_partners(first, second, plans.find(pair.first)->second, pair.second);
+        prune_partners(second, first, plans.find(pair.second)->second, pair.first);
       }
 
-      // count = comm_matchQ.size();
-      // graph_matching2(query_graph,task_graph,GMatchQ,count,query_state);
-
-      each_query_count[query_graph_id] = count;
-      // each_query_count[0] = task_graph.vertexes.size();
-
-      global_task_graph_size_vec[thread_rank] = task_graph.vertexes.size();
-      global_task_graph_id_vec[thread_rank] = task_graph.vertexes[0].id;
-
-      // 聚合结果
-      GMatchAgg *agg = get_aggregator();
-      agg->aggregate(each_query_count);
-
-      // 结束任务
-      return false;
+      for (const auto &entry : candidates)
+        for (const auto *data : entry.second)
+          expand_vertex(graph, *data, plans.find(entry.first)->second, plans, next);
     }
-    // cout << "DEBUG: 690" << endl;
-
-    vector<const QueryPlanVertexVecList *> matched_q;
-    vector<const vector<query_judge> *> matched_combine_tag;
-    vector<const QueryVertexVec *> matched_query_order;
-    hash_map<pair<VertexID, VertexID>, VertexID, pair_hash> matched_edges; // 该任务子图能够匹配到所有的查询图的当前层边关系，Key：边 e，Value：边 e 所属的查询图 id
-    vector<QueryVertex> current_level_vertex;                              // 该任务子图能够匹配到所有的查询图的当前层查询点
-    // 获取该任务子图能够匹配的所有查询图的查询计划
-    for (const auto &id : matched_query_graph_id)
+    if (!next.empty())
     {
-      matched_q.push_back(&(q.find(id)->second));
-      matched_combine_tag.push_back(&(combine_tag_table.find(id)->second));
-      const QueryVertexVec &order = order_list_table.find(id)->second;
-      matched_query_order.push_back(&order);
-      if (order.size() > context)
-      {
-        current_level_vertex.insert(current_level_vertex.end(), order[context].begin(), order[context].end());
-      }
-
-      const EdgeVector &edge_vec = edge_vec_table.find(id)->second;
-      if (edge_vec.size() > context)
-      {
-        for (const auto &e : edge_vec[context])
-        {
-          matched_edges.insert(make_pair(e, id));
-        }
-      }
-    }
-
-    // 判断是否是最后一层
-    hash_set<VertexID> pull_vertex; // 需要拉取的顶点 id
-    // 若当前层是倒数第二层，则判断最后一层的查询点是否都需要拉取
-    if (context == task_graph.max_step - 2)
-    {
-      vector<QueryVertex> last_level_query_vertex; // 最后一层的查询点
-      for (auto &order : matched_query_order)
-      {
-        if (order->size() == task_graph.max_step)
-        {
-          last_level_query_vertex.insert(last_level_query_vertex.end(), order->back().begin(), order->back().end());
-        }
-      }
-
-      bool flag = true;
-      for (const auto &q_v : last_level_query_vertex)
-      {
-        const QueryPlanVertex &qpv = query_plan_vertex_table.find(q_v.id)->second;
-        flag = flag && (q_v.value.adj.size() == qpv.parent.size());
-      }
-      is_end = flag;
-    }
-
-    // 遍历拉取到的顶点，利用 NLF 对其进行初步过滤、分类
-    hash_map<VertexID, list<VertexT *>> vet_map; // 存储分类后的顶点，key 为：查询图中当前层的查询点 id，value 为：能够匹配到 key id 的数据图顶点（即当前拉取的顶点）
-    for (int i = 0; i < frontier.size(); i++)
-    {
-      // 利用 LDF、NLF 过滤
-      filter_vertex(frontier[i], current_level_vertex, adj_map, query_vertex_label, vet_map);
-    }
-
-    hash_map<pair<VertexID, VertexID>, EdgeDirect, pair_hash> &edge_direct_table = *(hash_map<pair<VertexID, VertexID>, EdgeDirect, pair_hash> *)global_same_layer_edge_direct;
-    hash_map<pair<VertexID, VertexID>, EdgeLabel, pair_hash> &edge_label_table = *(hash_map<pair<VertexID, VertexID>, EdgeLabel, pair_hash> *)global_same_layer_edge_label;
-
-    // 检查同层关系
-    // 对每条边进行检查，去除不满足边关系的非法候选点，从而对 NLF 过滤后的顶点进行进一步过滤
-    for (const auto &edges_item : matched_edges)
-    {
-      // 取出边两端顶点的候选点列表
-      const pair<VertexID, VertexID> &e = edges_item.first; // 边 e
-      const VertexID &qg_id = edges_item.second;            // 边 e 所属的查询图 id
-      hash_map<VertexID, list<VertexT *>>::iterator v1_it = vet_map.find(e.first);
-      hash_map<VertexID, list<VertexT *>>::iterator v2_it = vet_map.find(e.second);
-
-      // if (edge_label_table.find(make_pair(e.first, e.second)) == edge_label_table.end())
-      //   cout << "不存在的边: first_id=" << e.first << ", second_id=" << e.second << endl;
-      EdgeLabel el = edge_label_table[make_pair(e.first, e.second)];
-      EdgeDirect d = edge_direct_table[make_pair(e.first, e.second)];
-
-      if (v1_it == vet_map.end() || v2_it == vet_map.end())
-      {
-        // e.first 或 e.second 查询点的候选点列表为空，则说明此 task 不能匹配到这条边所属的查询图，在候选查询图集合中需要将该查询图删除
-        vector<VertexID> &query_graph_id_set = task_graph.query_vertexs; // 当前 task 可能匹配到的查询图 id
-        // 在 query_vertexs 中将边所属的查询图 id 删除
-        for (auto qg_it = query_graph_id_set.begin(); qg_it != query_graph_id_set.end(); /** empty */)
-        {
-          if (*qg_it == qg_id)
-          {
-            qg_it = query_graph_id_set.erase(qg_it);
-            break;
-          }
-          else
-          {
-            qg_it++;
-          }
-        }
-
-        if (query_graph_id_set.empty())
-        {
-          // cout << "DEBUG: 699" << endl;
-          hash_map<VertexID, size_t> count;
-          GMatchAgg *agg = get_aggregator();
-          agg->aggregate(count);
-          // agg->aggregate(time_counter);
-          return false;
-        }
-      }
-
-      if (v1_it != vet_map.end() && v2_it != vet_map.end())
-      {
-        // 只有两端顶点的候选列表不为空时，才需要通过 check_edge 去删除一些非法的候选点
-        if (v1_it->second.size() > 0 && v2_it->second.size() > 0)
-        {
-          check_edge(v1_it->second, v2_it->second, adj_map, d, el);
-          // check_edge(v1_it->second, v2_it->second);
-        }
-        else
-        {
-          vector<VertexID> &query_graph_id_set = task_graph.query_vertexs; // 当前 task 可能匹配到的查询图 id
-          // 在 query_vertexs 中将边所属的查询图 id 删除
-          for (auto qg_it = query_graph_id_set.begin(); qg_it != query_graph_id_set.end(); /** empty */)
-          {
-            if (*qg_it == qg_id)
-            {
-              qg_it = query_graph_id_set.erase(qg_it);
-              break;
-            }
-            else
-            {
-              qg_it++;
-            }
-          }
-
-          if (query_graph_id_set.empty())
-          {
-            // cout << "DEBUG: 735" << endl;
-            hash_map<VertexID, size_t> count;
-            GMatchAgg *agg = get_aggregator();
-            agg->aggregate(count);
-            // agg->aggregate(time_counter);
-            return false;
-          }
-        }
-      }
-    }
-
-    // 变换 vet_map 结构 (hash_map<VertexID, list<VertexT *>> ==> hash_map<VertexT *, vector<VertexID>>)
-    hash_map<VertexT *, vector<VertexID>, vertex_hash> vet_map2;
-    hash_map<VertexT *, vector<VertexID>, vertex_hash>::iterator it;
-    hash_map<VertexID, set<VertexID>> &candidate_vertexs = task_graph.candidate_vertexs;
-    for (const auto &item : vet_map)
-    {
-      for (const auto &v : item.second)
-      {
-        candidate_vertexs[item.first].insert(v->id);
-        it = vet_map2.find(v);
-        if (it == vet_map2.end())
-        {
-          vector<VertexID> vec;
-          vec.push_back(item.first);
-          vet_map2.insert(make_pair(v, vec));
-        }
-        else
-        {
-          it->second.push_back(item.first);
-        }
-      }
-    }
-
-    // 判断过滤后的候选点 map 是否为空
-    if (0 == vet_map2.size() && !is_end)
-    { // 当前步不能结束但是map 为空，则说明当前层的查询点没有合法的候选点（即不能匹配到当前层查询点），因此当前 task 需要提前结束任务
-      LOG_DEBUG("%d 种子顶点任务提前结束\n", task_graph.vertexes[0].id);
-      vector<VertexID> &query_graph_id_set = task_graph.query_vertexs;
-      for (auto qg_it = query_graph_id_set.begin(); qg_it != query_graph_id_set.end(); /** empty */)
-      {
-        if (plan_order_map.find(*qg_it)->second.size() - 1 >= context)
-        {
-          qg_it = query_graph_id_set.erase(qg_it);
-        }
-        else
-        {
-          qg_it++;
-        }
-      }
-
-      if (query_graph_id_set.empty())
-      {
-        // cout << "DEBUG: 788" << endl;
-        hash_map<VertexID, size_t> count;
-        GMatchAgg *agg = get_aggregator();
-        agg->aggregate(count);
-        // agg->aggregate(time_counter);
-        return false;
-      }
-    }
-
-    // 将过滤后的候选点加入任务子图中，同时确定下一次要拉取的顶点
-    // WORKER_LOG(1, "第 %d 层拉取的顶点：\n", (context + 1));
-    hash_map<Label, bool>::iterator child_query_vertex_it;
-    for (const auto &item : vet_map2)
-    {
-      hash_map<Label, bool> child_query_vertex; // key：子查询点标签，value：标记子查询点是否需要拉取
-      vector<pair<Label, bool>> child_query_vertex_vec;
-      vector<const GMatchVertex *> only_parent_query_vertex;
-      // 获取顶点子节点的标签及度数
-      if (context < task_graph.max_step - 1) // 判断当前层是否是最后一层，如果是最后一层，不需要再拉取顶点，因此也不需要获取子节点的标签
-      {
-        // 不是最后一层，则需要获取子节点标签，从而确定需要拉取的顶点
-        for (const auto &q_v : item.second)
-        {
-          const auto &clvm_it = query_plan_vertex_table.find(q_v);
-
-          const QueryPlanVertex &p_v = query_plan_vertex_table.find(q_v)->second;
-          // 获取 p_v 的子查询点的标签
-          get_child_query_vertex(p_v, child_query_vertex,
-                                 query_graph_table, query_plan_vertex_table, only_parent_query_vertex);
-        }
-        for (const auto &cqv : child_query_vertex)
-          child_query_vertex_vec.push_back(make_pair(cqv.first, cqv.second));
-      }
-
-      // 判断当前顶点是否在任务子图中，不在则需要将其加入到任务子图中
-      item.first->value.matched_query = item.second;
-      if (!task_graph.hasVertex(item.first->id))
-      {
-        addNode(task_graph, *item.first);
-      }
-
-      // 遍历邻接表，根据邻接表数据在任务子图中加入相应的边。同时，根据子节点标签拉取相应的顶点数据
-      vector<AdjItem> &nbs = adj_map[item.first->id];
-      for (const auto &adj_v : nbs)
-      {
-        bool has_flag = task_graph.hasVertex(adj_v.id);
-
-        if (task_graph.hasVertex(adj_v.id))
-        {
-          // 添加边
-          addEdge_safe(task_graph, item.first->id, adj_v.id, adj_v.d, adj_v.el);
-        }
-
-        child_query_vertex_it = child_query_vertex.find(adj_v.l);
-
-        // 判断当前顶点是否需要拉取
-        if (child_query_vertex_it != child_query_vertex.end())
-        {
-          // 判断当前顶点匹配到的查询点是否只有父节点
-          if (child_query_vertex_it->second)
-          { // 如果只有父节点，则不需要拉取，直接加入到任务子图中
-            if (!task_graph.hasVertex(adj_v.id))
-            {
-              vector<VertexID> vec;
-              // if (local_table.find(adj_v.id) == local_table.end())
-              //   addNode(task_graph, adj_v.id, adj_v.l, vec);
-              // else
-              // {
-              //   VertexT *pAdjV = local_table[adj_v.id];
-              //   addNode(task_graph, adj_v.id, adj_v.l, vec, pAdjV->value.adj);
-              // }
-              addNode(task_graph, adj_v.id, adj_v.l, vec);
-            }
-            // 添加边
-            addEdge_safe(task_graph, item.first->id, adj_v.id, adj_v.d, adj_v.el);
-
-            for (const auto &opqv : only_parent_query_vertex)
-            {
-              if (opqv->value.l == adj_v.l || opqv->value.l < 0)
-                candidate_vertexs[opqv->id].insert(adj_v.id);
-            }
-          }
-          else
-          { // 如果含有兄弟节点或子节点，则需要拉取
-            pull_vertex.insert(adj_v.id);
-          }
-        }
-        else
-        {
-          // 如果只有父节点，则不需要拉取，直接加入到任务子图中
-          if (!task_graph.hasVertex(adj_v.id))
-          {
-            vector<VertexID> vec;
-            addNode(task_graph, adj_v.id, adj_v.l, vec);
-          }
-          // 添加边
-          addEdge_safe(task_graph, item.first->id, adj_v.id, adj_v.d, adj_v.el);
-
-          for (const auto &opqv : only_parent_query_vertex)
-          {
-            if (opqv->value.l == adj_v.l || opqv->value.l < 0)
-              candidate_vertexs[opqv->id].insert(adj_v.id);
-          }
-
-          // 如果含有兄弟节点或子节点，则需要拉取
-          pull_vertex.insert(adj_v.id);
-        }
-      }
-    }
-
-    // WORKER_LOG(1, "\n\n");
-
-    // 判断是否结束
-    if (is_end)
-    {
-      vector<VertexT> &tg_vertexes = task_graph.vertexes;
-
-#if ENABLE_DEBUG
-      // 输出任务子图
-      printf("\n======= 匹配的查询点： ");
-      for (const auto &v : task_graph.query_vertexs)
-      {
-        printf("%d ", v);
-      }
-      printf(" ===============\n");
-
-      printf("======= 种子顶点： ");
-      for (const auto &v : task_graph.roots)
-      {
-        printf("%d ", v.id);
-      }
-      printf(" ===============\n");
-      printf("任务子图结构如下：\n");
-      for (const auto &v : tg_vertexes)
-      {
-        printf("(%d,%d) 邻接表：", v.id, v.value.l);
-        for (const auto &adj_v : v.value.adj)
-        {
-          printf("(%d,%d) ", adj_v.id, adj_v.l);
-        }
-        printf("\n");
-      }
-
-      // cout << endl << "======= 匹配的查询点： ";
-      // for (const auto &v : task_graph.query_vertexs)
-      // {
-      //     cout << v << " ";
-      // }
-      // cout << " ===============" << endl;
-
-      // cout << "======= 种子顶点： ";
-      // for (const auto &v : task_graph.roots)
-      // {
-      //     cout << v.id << " ";
-      // }
-      // cout << " ===============" << endl;
-
-      // cout << "任务子图结构如下：" << endl;
-      // for (const auto &v : tg_vertexes)
-      // {
-      //     cout << "(" << v.id << "," << v.value.l << ")" << "邻接表：";
-      //     for (const auto &adj_v : v.value.adj)
-      //     {
-      //         cout << "(" << adj_v.id << "," << adj_v.l << ") ";
-      //     }
-      //     cout << endl;
-      // }
-#endif
-      // cout << "DEBUG: 1110" << endl;
-      VertexID query_graph_id = task_graph.query_vertexs[0];                                  // 获得查询图的 id
-      const QueryGroup *group_ptr = lsh_query_graph_group_table.find(query_graph_id)->second; // 查询组
-      const GMatchSubgraph &comm_subgraph = group_ptr->comm_subgraph;                         // 公共子图
-      const vector<QueryVertex> &comm_subgraph_vertexes = comm_subgraph.vertexes;             // 公共子图的点
-
-      // 先将每个查询点的匹配数量设置为0
-      hash_map<VertexID, size_t> each_query_count;
-      for (auto &each_query : q)
-      {
-        // cout <<"查询图id："<<each_query.first <<endl;
-        each_query_count[each_query.first] = 0;
-      }
-
-      vector<VertexID> GMatchQ;                                                   // 保存结果的数据
-      const QueryPlanVertexVecList &query_graph = q.find(query_graph_id)->second; // 查询图
-      size_t count = 0;
-      // bool query_last = false;
-      const vector<query_judge> &query_state = combine_tag_table.find(query_graph_id)->second;
-      count = 0;
-
-      // 判断是否存在公共匹配结果
-      if (NULL == task_graph.comm_match) // 无公共匹配结果，则直接回溯即可
-      {
-        // cout<<"query_graph.size() = "<<query_graph.size()<<endl;
-        // cout<<"查询图查询点：";
-        // for(int i=0; i<query_graph.size();++i){
-        //     cout<<" "<<query_graph[i].id<<query_graph[i].l;
-        // }
-        // cout<<endl;
-        //  cout<<"--------------------"<<endl;
-        // cout<<"query_state.size() = "<<query_state.size()<<endl;
-        // for(int i=0; i<query_state.size();++i){
-        //     cout<<" "<<query_state[i].id;
-        // }
-        // cout<<endl;
-        graph_matching3(query_graph, task_graph, GMatchQ, count, query_state);
-        // cout << "line: 1052, 结束运行 graph_matching3" << endl;
-
-        // cout <<"无公共匹配结果，则直接回溯即可"<<endl;
-        graph_matching_root(query_graph, task_graph, GMatchQ, count, query_state);
-        // cout << "line: 1056, 结束运行 graph_matching_root" << endl;
-
-        // cout<<"结束"<<endl;
-      }
-      else if (task_graph.comm_match->size() > 0) // 存在公共匹配结果，则利用公共匹配结果继续匹配
-      {
-
-        vector<vector<VertexID>> &comm_matchQ = *task_graph.comm_match; // 保存公共部 分 匹配
-        // 拉取几步后回溯
-        //  使用公共部分继续匹配
-        // cout << "line: 979, 开始运行 graph_matching_comm_root" << endl;
-        graph_matching_comm_root(query_graph, task_graph, comm_matchQ, GMatchQ, count, query_state);
-        // cout << "line: 1068, 结束运行 graph_matching_comm_root" << endl;
-
-        // 强制从头开始匹配
-        // graph_matching_root(query_graph,task_graph, GMatchQ, count,query_state);
-        // count = comm_matchQ.size();
-      }
-      // cout << "DEBUG line: 987" << endl; // 正常输出
-
-      // graph_matching2(query_graph,task_graph,GMatchQ,count,query_state);
-
-      each_query_count[query_graph_id] = count;
-      // each_query_count[0] = task_graph.vertexes.size();
-      global_task_graph_size_vec[thread_rank] = task_graph.vertexes.size();
-      global_task_graph_id_vec[thread_rank] = task_graph.vertexes[0].id;
-
-      // 将有效种子顶点写入到文件中，以便检查结果
-      // write_result(task_graph);
-
-      // 聚合结果
-      // cout << "DEBUG: 1000" << endl; // 在这里结束了
-      GMatchAgg *agg = get_aggregator();
-      // cout << "rank=" << _my_rank << ", count=" << count << endl;
-      agg->aggregate(each_query_count);
-
-      // 结束任务
-      return false;
-    }
-    else
-    {
-      if (pull_vertex.empty())
-      {
-        LOG_DEBUG("%d 种子顶点任务提前结束\n", task_graph.vertexes[0].id);
-        vector<VertexID> &query_graph_id_set = task_graph.query_vertexs;
-        for (auto qg_it = query_graph_id_set.begin(); qg_it != query_graph_id_set.end(); /** empty */)
-        {
-          if (plan_order_map.find(*qg_it)->second.size() - 1 >= context)
-          {
-            qg_it = query_graph_id_set.erase(qg_it);
-          }
-          else
-          {
-            qg_it++;
-          }
-        }
-
-        if (query_graph_id_set.empty())
-        {
-          hash_map<VertexID, size_t> count;
-          GMatchAgg *agg = get_aggregator();
-          agg->aggregate(count);
-          // agg->aggregate(time_counter);
-          return false;
-        }
-      }
-
-      // 拉取下一层顶点
-      clear_pull(); // 清空之前拉取的顶点，从而存储下一次需要拉取的顶点
-      for (auto it = pull_vertex.begin(); it != pull_vertex.end(); it++)
-      {
-        pull(*it);
-      }
-
-      context++;
+      clear_pull();
+      for (VertexID id : next)
+        pull(id);
+      ++context;
       return true;
     }
+
+    const auto &order = *static_cast<const hash_map<VertexID, QueryPlanVertexVecList> *>(global_query_plan_vertex_order_list);
+    const auto &states = *static_cast<const hash_map<VertexID, vector<query_judge>> *>(global_query_combine_tag);
+    vector<VertexID> binding;
+    hash_map<VertexID, size_t> counts;
+    graph_matching_root(order.find(root)->second, graph, binding, counts[root], states.find(root)->second);
+    get_aggregator()->aggregate(counts);
+    global_task_graph_size_vec[thread_rank] = graph.vertexes.size();
+    global_task_graph_id_vec[thread_rank] = graph.vertexes.front().id;
+    return false;
   }
 
 /**

@@ -5,8 +5,8 @@ LDFLAGS = -lhdfs
 
 all: run
 
-run: run.cpp
-	$(CCOMPILE) -std=c++11 -pthread run.cpp $(CPPFLAGS) $(LIB) $(LDFLAGS)  -o run
+run: run.cpp Makefile $(wildcard *.h ../system/*.h ../system/subgraph/*.h ../system/util/*.h)
+	$(CCOMPILE) -std=c++11 -pthread run.cpp $(CPPFLAGS) $(CXXFLAGS) $(LIB) $(LDFLAGS)  -o run
 	
 clean:
 	-rm run
