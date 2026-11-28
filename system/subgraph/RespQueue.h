@@ -104,6 +104,7 @@ public:
         {
           sth_sent = true;
           // send reqs to tgt 将请求的响应结果发送给请求源（i 号 worker）
+          if (edge_run::stats) edge_run::totals[edge_run::ResponseBytes] += m0->size();
           MPI_Send(m0->get_buf(), m0->size(), MPI_CHAR, i, RESP_CHANNEL, MPI_COMM_WORLD);
           delete m0;
           m0 = new ibinstream;
@@ -118,6 +119,7 @@ public:
         {
           sth_sent = true;
           // send reqs to tgt
+          if (edge_run::stats) edge_run::totals[edge_run::ResponseBytes] += m1->size();
           MPI_Send(m1->get_buf(), m1->size(), MPI_CHAR, i, RESP_CHANNEL, MPI_COMM_WORLD);
           //------
           delete m1;

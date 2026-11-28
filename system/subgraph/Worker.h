@@ -1192,6 +1192,8 @@ public:
 
   //=======================================================
   // program entry point
+  virtual void prepare_seed_tasks() {}
+
   void run(const WorkerParams &params)
   {
     // check path + init
@@ -1429,6 +1431,7 @@ public:
     detect_common_subgraph(lsh_query_graph_group); // 开启组内的查询图合并之后，才需要检测公共子图
 #endif
 
+    prepare_seed_tasks();
     // 创建并启动一个 ReqServer 线程，负责接收请求和处理请求
     // set up ReqServer (containing RespQueue), let it know local_table for responding reqs
     ReqServer<VertexT> server_req(local_table);

@@ -3,7 +3,7 @@
 
 #include "subg-dev.h"
 #include "GMatchAgg.h"
-#include "graph_matching.h"
+#include "EdgeFootprint.h"
 #include "util/MemoryUtil.h"
 
 class GMatchComper : public Comper<GMatchTask, GMatchAgg>
@@ -492,7 +492,12 @@ public:
     const auto &states = *static_cast<const hash_map<VertexID, vector<query_judge>> *>(global_query_combine_tag);
     vector<VertexID> binding;
     hash_map<VertexID, size_t> counts;
+    edge_run::add(edge_run::Seeds, graph.roots.size());
+    edge_run::add(edge_run::Groups);
+    edge_run::add(edge_run::JoinedGroups, graph.roots.size() > 1);
     graph_matching_root(order.find(root)->second, graph, binding, counts[root], states.find(root)->second);
+    edge_run::record(graph);
+    edge_run::flush();
     get_aggregator()->aggregate(counts);
     global_task_graph_size_vec[thread_rank] = graph.vertexes.size();
     global_task_graph_id_vec[thread_rank] = graph.vertexes.front().id;
@@ -1275,6 +1280,20 @@ public:
    */
   virtual bool compute(SubgraphT &task_graph, ContextT &context, vector<VertexT *> &frontier)
   {
+    if (!task_graph.edge_seeds.empty()) {
+      size_t count = 0;
+      if (edge_run::advance(*cur_task, frontier, count)) return true;
+      hash_map<VertexID, size_t> counts;
+      counts[task_graph.query_vertexs.front()] = count;
+      get_aggregator()->aggregate(counts);
+      const size_t seeds = task_graph.edge_seeds.size()/2;
+      edge_run::add(edge_run::Seeds, seeds);
+      edge_run::add(edge_run::Groups);
+      edge_run::add(edge_run::JoinedGroups, seeds>1);
+      edge_run::record(task_graph, edge_run::programs.at(task_graph.query_vertexs.front()));
+      edge_run::flush();
+      return false;
+    }
     const vector<VertexID> &matched_query_graph_id = task_graph.query_vertexs;
     // 判断是否含有多个任务
     // if (1 == matched_query_graph_id.size())

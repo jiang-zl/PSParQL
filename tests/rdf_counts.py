@@ -77,6 +77,13 @@ def cases():
     yield "same-level-parallel", graph + [(6, 8, 5), (5, 4, 1), (5, 4, 2),
                                          (5, 4, 3), (8, 2, 9)], [
         (-4, 8, -1), (-1, 4, -2), (-1, 4, -3), (-2, 1, -3), (-2, 2, -3)]
+    # Seed-only leaves multiply independently, but connecting the two leaves
+    # constrains their bindings and they must no longer be factored.
+    star = [(1,1,2), (1,2,3), (1,2,4), (2,3,5), (2,3,6),
+            (3,4,5), (7,4,8)]
+    leaves = [(-1,1,-2), (-1,2,-3), (-2,3,-4)]
+    yield "independent-leaves", star, leaves
+    yield "connected-leaves", star, leaves + [(-3,4,-4)]
     # Same BFS level, parallel predicates with opposite orientations.
     yield "same-level", graph + [(5, 4, 1), (5, 4, 2), (5, 4, 3)], [
         (-1, 4, -2), (-1, 4, -3), (-2, 2, -3), (-3, 1, -2)]
@@ -84,6 +91,7 @@ def cases():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--mode", choices=["root","edge","endpoint","random","plain","full","residual","reuse","auto"])
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--counts-only", action="store_true", help="use a build without binding traces")
     parser.add_argument("--hdfs-root", help="existing HDFS directory for temporary inputs")
@@ -105,8 +113,10 @@ def main():
                         paths.append(dest)
                     else:
                         paths.append(str(path))
-                result = subprocess.run([*args.command, *paths, str(args.threads)], cwd=tmp,
-                                        capture_output=True, text=True, timeout=60, check=True)
+                result = subprocess.run([*args.command, *paths, str(args.threads), *([args.mode] if args.mode else [])], cwd=tmp,
+                                        capture_output=True, text=True, timeout=60)
+                if result.returncode:
+                    raise RuntimeError(f"{name}: {result.stdout} {result.stderr}")
                 expected = oracle(graph, query)
                 counts = re.findall(r"number of matching results for query is: (\d+)", result.stdout)
                 assert counts == [str(sum(expected.values()))], (name, counts, expected)
