@@ -236,6 +236,11 @@ public:
   // returns false if local-table is exhausted
   bool locTable2queue() // 生成任务成功，则返回 true；否则，返回 false
   {
+    if (edge_run::mode != edge_run::Root) {
+      auto &queue = *static_cast<conque_p<TaskT> *>(global_task_queue);
+      if (TaskT *task = queue.dequeue()) { add_task(task); return true; }
+      return false;
+    }
     size_t begin, end; //[begin, end) are the assigned vertices (their positions in local-table)
     // note that "end" is exclusive
     VTable &ltable = *(VTable *)global_local_table;
@@ -391,7 +396,7 @@ public:
     // lshmap_bucket<Label, TaskT *> &lsh_bucket = generated_task_map.get_bucket_by_key(task->subG.vertexes[0].id);
     // lsh_bucket.erase(task->subG.vertexes[0].value.l);
 
-    pair<KeyT, KeyT> key = make_pair(task->group_id, task->subG.vertexes[0].id);
+    pair<KeyT, KeyT> key = make_pair(task->group_id, task->subG.scheduler_key());
     // cout<<"generated_task_map.contains(key) = "<<key.first<<" "<<key.second<<endl;
     if (generated_task_map.contains(key))
     {
@@ -491,7 +496,7 @@ public:
         // lshmap_bucket<Label, TaskT *> &lsh_bucket = generated_task_map.get_bucket_by_key(t->subG.vertexes[0].id);
         // lsh_bucket.erase(t->subG.vertexes[0].value.l);
 
-        pair<KeyT, KeyT> key = make_pair(t->group_id, t->subG.vertexes[0].id);
+        pair<KeyT, KeyT> key = make_pair(t->group_id, t->subG.scheduler_key());
         if (generated_task_map.contains(key))
         {
           lshmap_bucket<KeyT, TaskT *> &lsh_bucket = generated_task_map.get_bucket_by_key(key);
@@ -561,7 +566,7 @@ public:
       // 公共匹配结果引用计数减 1
       if (NULL != task->subG.comm_match)
       {
-        pair<KeyT, KeyT> key = make_pair(task->group_id, task->subG.vertexes[0].id);
+        pair<KeyT, KeyT> key = make_pair(task->group_id, task->subG.scheduler_key());
         comm_match_reference_count[key]--;
         if (0 == comm_match_reference_count[key])
         {
@@ -604,7 +609,7 @@ public:
         q_task.pop_back();
         work_steal_queue->enqueue(t);
 
-        pair<KeyT, KeyT> key = make_pair(t->group_id, t->subG.vertexes[0].id);
+        pair<KeyT, KeyT> key = make_pair(t->group_id, t->subG.scheduler_key());
         if (generated_task_map.contains(key))
         {
           lshmap_bucket<KeyT, TaskT *> &lsh_bucket = generated_task_map.get_bucket_by_key(key);

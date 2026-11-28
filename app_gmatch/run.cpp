@@ -27,6 +27,33 @@
 int main(int argc, char *argv[])
 {
     init_worker(&argc, &argv);
+    if (argc < 4 || argc > 6 || atoi(argv[3]) < 1) {
+        if (!_my_rank) fprintf(stderr, "usage: run DATA QUERY THREADS [root|edge|endpoint|random|plain|full|residual|reuse|auto] [batch size 1..4096]\n");
+        worker_finalize();
+        return 2;
+    }
+    if (argc >= 5) {
+        int i = 0;
+        while (i <= edge_run::Auto && strcmp(argv[4], edge_run::mode_names[i])) ++i;
+        if (i > edge_run::Auto) {
+            if (!_my_rank) fprintf(stderr, "Unknown query mode: %s\n", argv[4]);
+            worker_finalize();
+            return 2;
+        }
+        edge_run::mode = static_cast<edge_run::Mode>(i);
+    }
+    if (argc == 6) edge_run::batch = atoi(argv[5]);
+    if (edge_run::batch < 1 || edge_run::batch > 4096) {
+        if (!_my_rank) fprintf(stderr, "Batch size must be 1..4096\n");
+        worker_finalize();
+        return 2;
+    }
+    int collect = getenv("PSPARQL_STATS") && !strcmp(getenv("PSPARQL_STATS"), "1");
+    MPI_Bcast(&collect, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    int footprint = getenv("PSPARQL_FOOTPRINT") && !strcmp(getenv("PSPARQL_FOOTPRINT"), "1");
+    MPI_Bcast(&footprint, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    edge_run::footprints = footprint;
+    edge_run::stats = collect || footprint;
     WorkerParams param;
     param.input_path = argv[1]; // the path of data graph in HDFS
     param.query_graph_path = argv[2]; // the path of query graph in HDFS
@@ -44,6 +71,8 @@ int main(int argc, char *argv[])
     // worker.setTrimmer(&trimmer);
     worker.setAggregator(&aggregator);
     worker.run(param);
+    edge_run::finish_footprints();
+    edge_run::report(_my_rank);
     worker_finalize();
     return 0;
 }

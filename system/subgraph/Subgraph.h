@@ -38,6 +38,11 @@ public:
    * 用于存储顶点在 vertexes 的下标，即 vmap[id] 的值为 id 顶点在 vertexes 中的下标。
    * 借助该 map 可以快速地根据顶点 id 获取到顶点的值。
    */
+  // Alternating first/second endpoint IDs; projection rows survive spills and steals.
+  vector<int> edge_seeds;
+  vector<map<int, vector<vector<int>>>> projections;
+  KeyT scheduler_key() const { return edge_seeds.empty() ? vertexes.front().id : edge_seeds.front(); }
+
   VertexMap vmap;                   // vmap[vid] = index of the vertex in "vertexes" defined below
   vector<VertexT> vertexes;         // store the nodes of this subgraph
   vector<VertexT> roots;            // 存储根顶点（种子顶点，数据点）
@@ -94,6 +99,7 @@ public:
     m << v.candidate_vertexs;
     m << v.mapping;
     m << v.max_step;
+    if (edge_run::mode != edge_run::Root) { m << v.edge_seeds; m << v.projections; }
     return m;
   }
 
@@ -115,6 +121,7 @@ public:
     m >> candidate_vertexs;
     m >> mapping;
     m >> max_step;
+    if (edge_run::mode != edge_run::Root) { m >> v.edge_seeds; m >> v.projections; }
 
     for (int i = 0; i < vertexes.size(); i++)
       vmap[vertexes[i].id] = i;
@@ -130,6 +137,7 @@ public:
     m << v.candidate_vertexs;
     m << v.mapping;
     m << v.max_step;
+    if (edge_run::mode != edge_run::Root) { m << v.edge_seeds; m << v.projections; }
     return m;
   }
 
@@ -151,6 +159,7 @@ public:
     m >> candidate_vertexs;
     m >> mapping;
     m >> max_step;
+    if (edge_run::mode != edge_run::Root) { m >> v.edge_seeds; m >> v.projections; }
     for (int i = 0; i < vertexes.size(); i++)
       vmap[vertexes[i].id] = i;
     return m;

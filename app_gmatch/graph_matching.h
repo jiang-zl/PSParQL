@@ -1067,6 +1067,8 @@ void ComputeLC_join2(const vector<QueryPlanVertex> &plan, GMatchSubgraph &graph,
     const BoundEdge &constraint = constraints[i];
     const auto &source = graph.getVertex(binding[constraint.source_index])->value;
     auto &ids = lists[i];
+    edge_run::add(edge_run::ListBuilds);
+    edge_run::add(edge_run::ScanItems, source.adj.size());
     for (const AdjItem &edge : source.adj)
     {
       if (edge.d == constraint.direction && edge.el == constraint.predicate &&
@@ -1078,8 +1080,10 @@ void ComputeLC_join2(const vector<QueryPlanVertex> &plan, GMatchSubgraph &graph,
   }
   if (lists.size() == 1)
     result.swap(lists.front());
-  else if (!lists.empty())
+  else if (!lists.empty()) {
+    edge_run::add(edge_run::Intersections);
     leapfrog_join(lists, result);
+  }
 }
 
 #ifndef ENABLE_SPARQL_DEBUG

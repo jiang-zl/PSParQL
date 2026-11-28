@@ -3,12 +3,71 @@
 
 #include "subg-dev.h"
 #include "GMatchComper.h"
+#include "EdgeRouting.h"
 #include <limits>
 
 class GMatchWorker : public Worker<GMatchComper>
 {
 public:
   GMatchWorker(int num_compers) : Worker<GMatchComper>(num_compers) {}
+
+  void prepare_seed_tasks() override
+  {
+    if (edge_run::mode == edge_run::Root) return;
+    if (edge_run::mode == edge_run::Auto && (edge_run::programs.size() != 1 ||
+        edge_run::programs.begin()->second.roles.size() <= (size_t)edge_run::programs.begin()->second.arity)) {
+      edge_run::auto_root = true;
+      edge_run::mode = edge_run::Root;
+      return;
+    }
+    // Seed windows are routed before compers start. Use normal scheduler files
+    // for excess batches so both thread scheduling and MPI stealing stay bounded.
+    global_vertex_pos = local_table.size();
+    auto &ready = *static_cast<conque_p<TaskT> *>(global_task_queue);
+    int resident = 0, in_file = 0;
+    unique_ptr<ifbinstream> spill;
+    auto finish_file = [&] {
+      spill->close();
+      spill.reset();
+      global_file_list.enqueue(string(fname));
+      ++global_file_num;
+      in_file = 0;
+    };
+    for (const auto &entry : edge_run::programs) {
+      const int root = entry.first;
+      const auto &program = entry.second;
+      edge_run::EdgeRouter router(program, query_graph_table, local_table);
+      bool routed = router.route(vertexes, [&](const vector<int> &ids) {
+        unique_ptr<TaskT> task(new TaskT);
+        task->context = 0;
+        task->group_id = root;
+        task->subG.max_step = program.roles.size();
+        task->subG.query_vertexs.push_back(root);
+        task->subG.edge_seeds = ids;
+        set<int> needed;
+        for (size_t i=0; i<ids.size(); i+=2)
+          for (int r=0; r<program.arity; ++r)
+            if (program.needs_row(r)) needed.insert(ids[i+r]);
+        task->to_pull.assign(needed.begin(),needed.end());
+        if (resident < 256) {
+          ++resident;
+          ready.enqueue(task.release());
+        } else {
+          if (!spill) { set_fname(); spill.reset(new ifbinstream(fname)); }
+          *spill << *task;
+          if (++in_file == TASK_BATCH_NUM) finish_file();
+        }
+      });
+      if (!routed) {
+        global_vertex_pos = 0;
+        edge_run::auto_root = true;
+        edge_run::mode = edge_run::Root;
+        break;
+      }
+    }
+    if (spill) finish_file();
+    edge_run::flush();
+  }
 
   /*
 
@@ -852,6 +911,18 @@ public:
 #if ENABLE_QUERY_GROUP_COMBINE == 0
     MatchingQueryPlan(plan_order_list, plan_list, combine_tag_table, query_last);
 #endif
+
+    if (edge_run::mode != edge_run::Root) {
+      const AdjItem *anchor = nullptr;
+      for (const auto &edge : root_from->value.adj) {
+        if (edge.id != root_to->id) continue;
+        if (!anchor || data_edge_label_frequency[edge.el] < data_edge_label_frequency[anchor->el])
+          anchor = &edge;
+      }
+      if (!anchor) throw logic_error("missing query anchor");
+      edge_run::programs.emplace(root_from->id, edge_run::Program(plan_list, query_graph_table,
+                                                                 root_to->id, *anchor));
+    }
 
 #ifndef RELEASE
     for (const auto &pv : plan_list)

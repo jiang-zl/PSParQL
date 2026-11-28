@@ -140,6 +140,38 @@ For `data_graph_edge1_2.txt` with `query_graph_edge1.txt`, the final count is:
 the number of matching results for query is: 6
 ```
 
+## Single-query edge grouping
+
+The existing `run DATA QUERY THREADS` invocation uses `auto`. Use a fourth
+argument to select a strategy and a fifth for the maximum seeds per task
+(default 4096). All ranks in one job must use the same executable and arguments.
+
+| Mode | Seed and grouping |
+| --- | --- |
+| `root` | Root-task execution from the previous revise version. |
+| `edge` | One task per distinct ordered binding of the initial directed query edge. |
+| `endpoint`, `random` | Batch by the first bound endpoint or shuffle edges into bounded batches. |
+| `plain` | Hash the two endpoints' complete neighbor sets. |
+| `full` | WISE-style QPMH. A separate MinHash coordinate for each endpoint, direction and required property. |
+| `residual` | Use only property groups needed by later query roles. |
+| `reuse` | Choose the most expensive remaining property slice by estimated scan/extension work and use two MinHash coordinates for it. |
+| `auto` | Use reuse grouping when the first routed window contains at least 64 seeds and the estimated batch count is less than half the seed count. Otherwise run the root plan. Multi-query inputs and queries fully covered by their seed use the root path in auto mode. |
+
+Edge seeds are routed between ranks in windows. Equal sketches can join the
+same pending group across windows. Full groups are split at the batch limit;
+a rank also flushes partial groups at 32768 pending seeds. The original pull
+cache, compute threads and disk/steal transport execute the batches. Within a
+batch, exact role projections, identical anchor rows and suffix counts can be
+shared. Trace builds enumerate every binding. The counting fast path multiplies
+a terminal role's cardinality only when all its constraints depend exclusively
+on the fixed seed, retaining SPARQL row multiplicity.
+
+Set `PSPARQL_STATS=1` on the launching rank for aggregate counters.
+`PSPARQL_FOOTPRINT=1` additionally takes an exact census of vertices and
+directed triples retained in each task; enable this on small diagnostic runs.
+The excess of total copies over global distinct items measures cross-task
+duplication. [Benchmark instructions and measurements](benchmarks/README.md).
+
 ## Count regression tests
 
 Build the matcher on the deployment machine before distributing it to workers.

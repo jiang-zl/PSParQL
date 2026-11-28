@@ -25,6 +25,7 @@
 #define GLOBAL_H
 
 #include <mpi.h>
+#include "query_stats.h"
 #include <stddef.h>
 #include <string.h>
 #include <limits.h>

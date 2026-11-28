@@ -1,0 +1,3 @@
+mode,selected,seeds,groups,multi_seed_groups,scan_items,list_builds,intersections,summary_items,summary_bytes,route_bytes,response_bytes,memo_hits,vertex_copies,triple_copies,unique_vertices,unique_triples
+root,root,256,243,13,82688,8960,256,0,0,0,1108704,0,45568,53504,45568,53504
+auto,root,256,243,13,82688,8960,256,25088,9504,7400,1108704,0,45568,53504,45568,53504

@@ -123,7 +123,7 @@ template <>
 ibinstream &operator<<(ibinstream &m, const vector<int> &v)
 {
   m << v.size();
-  m.raw_bytes(&v[0], v.size() * sizeof(int));
+  if (!v.empty()) m.raw_bytes(v.data(), v.size() * sizeof(int));
   return m;
 }
 
